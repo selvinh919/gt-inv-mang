@@ -3,13 +3,17 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: TCG Collection Tracker API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: collection
+    description: Collection management
+  - name: cards
+    description: Card search via TCG API
 paths:
   /healthz:
     get:
@@ -24,6 +28,142 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /collection:
+    get:
+      operationId: getCollection
+      tags: [collection]
+      summary: Get all collection items
+      responses:
+        "200":
+          description: List of collection items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CollectionItem"
+    post:
+      operationId: addToCollection
+      tags: [collection]
+      summary: Add a card to collection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CollectionItemInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollectionItem"
+
+  /collection/summary:
+    get:
+      operationId: getCollectionSummary
+      tags: [collection]
+      summary: Get collection summary stats (total value, counts by game, top cards)
+      responses:
+        "200":
+          description: Summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollectionSummary"
+
+  /collection/{id}:
+    get:
+      operationId: getCollectionItem
+      tags: [collection]
+      summary: Get a single collection item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Collection item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollectionItem"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateCollectionItem
+      tags: [collection]
+      summary: Update quantity or notes for a collection item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CollectionItemUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollectionItem"
+        "404":
+          description: Not found
+    delete:
+      operationId: removeFromCollection
+      tags: [collection]
+      summary: Remove a card from collection
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /cards/search:
+    get:
+      operationId: searchCards
+      tags: [cards]
+      summary: Search cards via TCG API
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: game
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: per_page
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TcgCard"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +174,149 @@ components:
       required:
         - status
 
+    TcgCard:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        set_name:
+          type: ["string", "null"]
+        game_name:
+          type: ["string", "null"]
+        rarity:
+          type: ["string", "null"]
+        printing:
+          type: ["string", "null"]
+        market_price:
+          type: ["number", "null"]
+        low_price:
+          type: ["number", "null"]
+        median_price:
+          type: ["number", "null"]
+        image_url:
+          type: ["string", "null"]
+        product_type:
+          type: ["string", "null"]
+        total_listings:
+          type: ["integer", "null"]
+      required:
+        - id
+        - name
+
+    CollectionItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        card_id:
+          type: integer
+        card_name:
+          type: string
+        set_name:
+          type: ["string", "null"]
+        game_name:
+          type: ["string", "null"]
+        rarity:
+          type: ["string", "null"]
+        printing:
+          type: string
+        market_price:
+          type: ["number", "null"]
+        low_price:
+          type: ["number", "null"]
+        image_url:
+          type: ["string", "null"]
+        quantity:
+          type: integer
+        notes:
+          type: ["string", "null"]
+        added_at:
+          type: string
+      required:
+        - id
+        - card_id
+        - card_name
+        - printing
+        - quantity
+        - added_at
+
+    CollectionItemInput:
+      type: object
+      properties:
+        card_id:
+          type: integer
+        card_name:
+          type: string
+        set_name:
+          type: ["string", "null"]
+        game_name:
+          type: ["string", "null"]
+        rarity:
+          type: ["string", "null"]
+        printing:
+          type: string
+        market_price:
+          type: ["number", "null"]
+        low_price:
+          type: ["number", "null"]
+        image_url:
+          type: ["string", "null"]
+        quantity:
+          type: integer
+        notes:
+          type: ["string", "null"]
+      required:
+        - card_id
+        - card_name
+        - printing
+        - quantity
+
+    CollectionItemUpdate:
+      type: object
+      properties:
+        quantity:
+          type: integer
+        notes:
+          type: ["string", "null"]
+        market_price:
+          type: ["number", "null"]
+
+    GameBreakdown:
+      type: object
+      properties:
+        game:
+          type: string
+        count:
+          type: integer
+        total_value:
+          type: number
+      required:
+        - game
+        - count
+        - total_value
+
+    CollectionSummary:
+      type: object
+      properties:
+        total_cards:
+          type: integer
+        unique_cards:
+          type: integer
+        total_value:
+          type: number
+        by_game:
+          type: array
+          items:
+            $ref: "#/components/schemas/GameBreakdown"
+        top_cards:
+          type: array
+          items:
+            $ref: "#/components/schemas/CollectionItem"
+      required:
+        - total_cards
+        - unique_cards
+        - total_value
+        - by_game
+        - top_cards

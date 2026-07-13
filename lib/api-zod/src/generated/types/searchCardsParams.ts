@@ -6,6 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface HealthStatus {
-  status: string;
-}
+export type SearchCardsParams = {
+q: string;
+game?: string;
+per_page?: number;
+};

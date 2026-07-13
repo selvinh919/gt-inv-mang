@@ -6,6 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface HealthStatus {
-  status: string;
+export interface GameBreakdown {
+  game: string;
+  count: number;
+  total_value: number;
 }
