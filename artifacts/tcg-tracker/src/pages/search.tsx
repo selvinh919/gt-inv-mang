@@ -100,7 +100,7 @@ export default function Search() {
         </div>
 
         <p className="text-sm text-muted-foreground -mt-2">
-          Search by card name. Card numbers (like "199") are stripped automatically.
+          Search by name, set, or include a card number — e.g. "Charizard ex 199" or "Pikachu 151"
         </p>
 
         {debouncedQuery.length > 2 && (
