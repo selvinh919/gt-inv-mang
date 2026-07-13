@@ -122,7 +122,13 @@ export default function Search() {
                     </div>
                     <div className="p-4 flex flex-col flex-1">
                       <h3 className="font-bold text-lg leading-tight mb-1 truncate" title={card.name}>{card.name}</h3>
-                      <div className="text-sm text-muted-foreground truncate mb-4">{card.set_name} • {card.rarity || 'Common'}</div>
+                      <div className="text-sm text-muted-foreground truncate">{card.set_name}</div>
+                      <div className="flex items-center gap-2 mt-1 mb-4">
+                        {card.number && (
+                          <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded text-muted-foreground">#{card.number}</span>
+                        )}
+                        <span className="text-xs text-muted-foreground truncate">{card.rarity || 'Common'}</span>
+                      </div>
                       
                       <div className="mt-auto space-y-2">
                         <Button 

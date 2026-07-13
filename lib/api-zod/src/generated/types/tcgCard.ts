@@ -10,6 +10,8 @@ export interface TcgCard {
   id: number;
   name: string;
   /** @nullable */
+  number?: string | null;
+  /** @nullable */
   set_name?: string | null;
   /** @nullable */
   game_name?: string | null;

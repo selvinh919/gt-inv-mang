@@ -178,6 +178,7 @@ export const SearchCardsQueryParams = zod.object({
 export const SearchCardsResponseItem = zod.object({
   "id": zod.number(),
   "name": zod.string(),
+  "number": zod.string().nullish(),
   "set_name": zod.string().nullish(),
   "game_name": zod.string().nullish(),
   "rarity": zod.string().nullish(),

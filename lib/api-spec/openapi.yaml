@@ -181,6 +181,8 @@ components:
           type: integer
         name:
           type: string
+        number:
+          type: ["string", "null"]
         set_name:
           type: ["string", "null"]
         game_name:
