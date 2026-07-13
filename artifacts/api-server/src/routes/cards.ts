@@ -21,12 +21,22 @@ router.get("/search", async (req, res) => {
 
   const { q, game, per_page } = parsed.data;
 
-  const params = new URLSearchParams({ q: q! });
+  // The TCG API matches against card names only (clean_name), not card numbers.
+  // Strip trailing tokens that look like card numbers (e.g. "199", "199/264", "6/100")
+  // so a query like "charizard ex 199" becomes "charizard ex".
+  const cleanedQ = (q ?? "")
+    .trim()
+    .split(/\s+/)
+    .filter((token) => !/^\d+(\/\d+)?$/.test(token))
+    .join(" ")
+    .trim() || (q ?? "");
+
+  const params = new URLSearchParams({ q: cleanedQ });
   if (game) params.set("game", game);
   if (per_page) params.set("per_page", String(per_page));
 
   try {
-    const response = await fetch(`${TCG_API_BASE}/search/cards?${params.toString()}`, {
+    const response = await fetch(`${TCG_API_BASE}/search?${params.toString()}`, {
       headers: {
         "X-API-Key": TCG_API_KEY ?? "",
       },

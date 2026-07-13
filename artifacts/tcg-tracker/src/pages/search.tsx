@@ -9,12 +9,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
 const GAMES = [
-  "Pokemon",
-  "Magic: The Gathering",
-  "Yu-Gi-Oh!",
-  "Lorcana",
-  "Flesh & Blood",
-  "One Piece"
+  { label: "Pokemon", value: "pokemon" },
+  { label: "Magic: The Gathering", value: "magic" },
+  { label: "Yu-Gi-Oh!", value: "yugioh" },
+  { label: "Lorcana", value: "lorcana" },
+  { label: "Flesh & Blood", value: "flesh-and-blood" },
+  { label: "One Piece", value: "one-piece-card-game" },
 ];
 
 const formatCurrency = (value: number | null | undefined) => {
@@ -25,7 +25,7 @@ const formatCurrency = (value: number | null | undefined) => {
 export default function Search() {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [game, setGame] = useState<string>("Pokemon");
+  const [game, setGame] = useState<string>("pokemon");
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -93,11 +93,15 @@ export default function Search() {
             </SelectTrigger>
             <SelectContent>
               {GAMES.map(g => (
-                <SelectItem key={g} value={g}>{g}</SelectItem>
+                <SelectItem key={g.value} value={g.value}>{g.label}</SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
+
+        <p className="text-sm text-muted-foreground -mt-2">
+          Search by card name. Card numbers (like "199") are stripped automatically.
+        </p>
 
         {debouncedQuery.length > 2 && (
           <div className="pt-4">
