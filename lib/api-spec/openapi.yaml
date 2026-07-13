@@ -203,6 +203,12 @@ components:
           type: ["string", "null"]
         total_listings:
           type: ["integer", "null"]
+        foil_only:
+          type: ["integer", "null"]
+        lowest_with_shipping:
+          type: ["number", "null"]
+        price_updated_at:
+          type: ["string", "null"]
       required:
         - id
         - name

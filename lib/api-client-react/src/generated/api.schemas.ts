@@ -34,6 +34,12 @@ export interface TcgCard {
   product_type?: string | null;
   /** @nullable */
   total_listings?: number | null;
+  /** @nullable */
+  foil_only?: number | null;
+  /** @nullable */
+  lowest_with_shipping?: number | null;
+  /** @nullable */
+  price_updated_at?: string | null;
 }
 
 export interface CollectionItem {

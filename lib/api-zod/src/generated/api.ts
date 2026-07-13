@@ -188,7 +188,10 @@ export const SearchCardsResponseItem = zod.object({
   "median_price": zod.number().nullish(),
   "image_url": zod.string().nullish(),
   "product_type": zod.string().nullish(),
-  "total_listings": zod.number().nullish()
+  "total_listings": zod.number().nullish(),
+  "foil_only": zod.number().nullish(),
+  "lowest_with_shipping": zod.number().nullish(),
+  "price_updated_at": zod.string().nullish()
 })
 export const SearchCardsResponse = zod.array(SearchCardsResponseItem)
 
