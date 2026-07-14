@@ -111,22 +111,23 @@ function CardDetailModal({
   const printingLabel = getPrintingLabel(card.printing);
   const isFoil = isPrintingFoil(card.printing);
 
-  const updatedAt = card.price_updated_at
-    ? new Date(card.price_updated_at).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      })
-    : null;
-
   const skus = conditionData?.skus ?? [];
   const conditionNames = CONDITION_ORDER.filter((c) =>
     skus.some((s) => s.condition_name === c)
   );
-
   const selectedSku = skus.find((s) => s.condition_name === selectedCondition) ?? null;
-
   const hasConditionData = skus.length > 0;
+
+  // Prices: use selected condition's raw tcgtracking data; fall back to TCGApi only if unavailable
+  const displayMarket = hasConditionData ? selectedSku?.market_price ?? null : card.market_price;
+  const displayLow    = hasConditionData ? selectedSku?.lowest_price ?? null : card.low_price;
+  const displayHigh   = hasConditionData ? selectedSku?.highest_price ?? null : null;
+  const displayCount  = hasConditionData ? selectedSku?.price_count ?? null : card.total_listings;
+  const displayUpdated = hasConditionData && selectedSku?.price_updated_at
+    ? new Date(selectedSku.price_updated_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+    : card.price_updated_at
+      ? new Date(card.price_updated_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+      : null;
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -138,6 +139,7 @@ function CardDetailModal({
         </DialogHeader>
 
         <div className="flex gap-4">
+          {/* Card image */}
           <div className="w-36 shrink-0 rounded-lg overflow-hidden bg-black">
             {card.image_url ? (
               <img
@@ -152,7 +154,9 @@ function CardDetailModal({
             )}
           </div>
 
+          {/* Meta + condition selector + prices */}
           <div className="flex-1 space-y-3 min-w-0">
+            {/* Badges */}
             <div className="space-y-1 text-sm">
               <div className="text-muted-foreground">{card.set_name}</div>
               <div className="flex flex-wrap gap-1.5 mt-1">
@@ -168,64 +172,19 @@ function CardDetailModal({
                 )}
                 <Badge
                   variant="outline"
-                  className={
-                    isFoil
-                      ? "text-xs border-amber-500/50 text-amber-400"
-                      : "text-xs"
-                  }
+                  className={isFoil ? "text-xs border-amber-500/50 text-amber-400" : "text-xs"}
                 >
                   {printingLabel}
                 </Badge>
               </div>
             </div>
 
-            {/* TCGPlayer market prices (always shown) */}
-            <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-lg bg-muted/60 px-3 py-2">
-                <div className="text-xs text-muted-foreground mb-0.5 flex items-center gap-1">
-                  <TrendingDown className="h-3 w-3" /> Market
-                </div>
-                <div className="font-mono font-bold text-primary">
-                  {fmt(card.market_price)}
-                </div>
-              </div>
-              <div className="rounded-lg bg-muted/60 px-3 py-2">
-                <div className="text-xs text-muted-foreground mb-0.5 flex items-center gap-1">
-                  <ShoppingCart className="h-3 w-3" /> Low
-                </div>
-                <div className="font-mono font-bold">
-                  {fmt(card.low_price)}
-                </div>
-              </div>
-            </div>
-
-            {card.total_listings != null && (
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Package className="h-3 w-3" />
-                {card.total_listings.toLocaleString()} listings
-                {updatedAt && <span className="ml-1">· Updated {updatedAt}</span>}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Condition-based pricing section */}
-        <div className="border-t border-border pt-3 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold">Price by Condition</span>
-            {conditionLoading && (
-              <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-            )}
-            {!tcgplayerId && !conditionLoading && (
-              <span className="text-xs text-muted-foreground">No TCGPlayer ID</span>
-            )}
-          </div>
-
-          {hasConditionData ? (
-            <>
-              {/* Condition pills */}
-              <div className="flex flex-wrap gap-1.5">
-                {conditionNames.map((cond) => (
+            {/* Condition pills — shown as soon as data loads, spinner while loading */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {conditionLoading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+              ) : hasConditionData ? (
+                conditionNames.map((cond) => (
                   <button
                     key={cond}
                     onClick={() => setSelectedCondition(cond)}
@@ -237,55 +196,59 @@ function CardDetailModal({
                   >
                     {CONDITION_SHORT[cond] ?? cond}
                   </button>
-                ))}
-              </div>
+                ))
+              ) : null}
+            </div>
 
-              {/* Selected condition price details */}
-              {selectedSku && (
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="rounded-lg bg-muted/60 px-3 py-2">
-                    <div className="text-xs text-muted-foreground mb-0.5">Market</div>
-                    <div className="font-mono font-bold text-primary text-sm">
-                      {fmt(selectedSku.market_price)}
-                    </div>
-                  </div>
-                  <div className="rounded-lg bg-muted/60 px-3 py-2">
-                    <div className="text-xs text-muted-foreground mb-0.5">Low</div>
-                    <div className="font-mono font-bold text-sm">
-                      {fmt(selectedSku.lowest_price)}
-                    </div>
-                  </div>
-                  <div className="rounded-lg bg-muted/60 px-3 py-2">
-                    <div className="text-xs text-muted-foreground mb-0.5">High</div>
-                    <div className="font-mono font-bold text-sm">
-                      {fmt(selectedSku.highest_price)}
-                    </div>
+            {/* Prices — always 3 columns when high is available, 2 otherwise */}
+            <div className={`grid gap-2 ${displayHigh != null ? "grid-cols-3" : "grid-cols-2"}`}>
+              <div className="rounded-lg bg-muted/60 px-3 py-2">
+                <div className="text-xs text-muted-foreground mb-0.5 flex items-center gap-1">
+                  <TrendingDown className="h-3 w-3" /> Market
+                </div>
+                <div className="font-mono font-bold text-primary">
+                  {fmt(displayMarket)}
+                </div>
+              </div>
+              <div className="rounded-lg bg-muted/60 px-3 py-2">
+                <div className="text-xs text-muted-foreground mb-0.5 flex items-center gap-1">
+                  <ShoppingCart className="h-3 w-3" /> Low
+                </div>
+                <div className="font-mono font-bold">
+                  {fmt(displayLow)}
+                </div>
+              </div>
+              {displayHigh != null && (
+                <div className="rounded-lg bg-muted/60 px-3 py-2">
+                  <div className="text-xs text-muted-foreground mb-0.5">High</div>
+                  <div className="font-mono font-bold">
+                    {fmt(displayHigh)}
                   </div>
                 </div>
               )}
-              {selectedSku?.price_count != null && (
-                <p className="text-xs text-muted-foreground">
-                  {selectedSku.price_count} listings · {selectedSku.variant_name}
-                  {selectedSku.price_updated_at && (
-                    <> · Updated {new Date(selectedSku.price_updated_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</>
-                  )}
-                </p>
-              )}
-            </>
-          ) : !conditionLoading && tcgplayerId ? (
-            <p className="text-xs text-muted-foreground">
-              No per-condition data available for this card.
-            </p>
-          ) : null}
+            </div>
+
+            {/* Listing count + updated */}
+            {(displayCount != null || displayUpdated) && (
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Package className="h-3 w-3" />
+                {displayCount != null && <span>{displayCount.toLocaleString()} listings</span>}
+                {displayUpdated && <span>· Updated {displayUpdated}</span>}
+                {hasConditionData && selectedSku && (
+                  <span>· {selectedSku.variant_name}</span>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         <Button
-          className="w-full mt-1"
+          className="w-full mt-2"
           onClick={() => onAdd(card, selectedCondition)}
           disabled={isPending}
         >
           <Plus className="h-4 w-4 mr-2" />
-          Add — {CONDITION_SHORT[selectedCondition] ?? selectedCondition} · {printingLabel} · {fmt(selectedSku?.market_price ?? card.market_price)}
+          Add — {hasConditionData ? (CONDITION_SHORT[selectedCondition] ?? selectedCondition) + " · " : ""}{printingLabel} · {fmt(displayMarket)}
         </Button>
       </DialogContent>
     </Dialog>
