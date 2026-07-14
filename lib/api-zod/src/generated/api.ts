@@ -221,3 +221,25 @@ export const GetConditionPricesResponse = zod.object({
 })
 
 
+/**
+ * @summary Identify a card from an image using tcgtracking scan API
+ */
+export const ScanCardBody = zod.object({
+  "game": zod.string(),
+  "image": zod.string()
+})
+
+export const ScanCardResponse = zod.object({
+  "success": zod.boolean(),
+  "results": zod.array(zod.object({
+  "product_id": zod.number(),
+  "score": zod.number(),
+  "name": zod.string(),
+  "number": zod.string().nullish(),
+  "printing": zod.string().nullish(),
+  "set_id": zod.number().nullish()
+})),
+  "candidates_scanned": zod.number()
+})
+
+

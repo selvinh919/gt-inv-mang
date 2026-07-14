@@ -157,4 +157,69 @@ router.get("/:tcgplayerId/condition-prices", async (req, res) => {
   }
 });
 
+const TCGTRACKING_GAME_IDS: Record<string, number> = {
+  pokemon: 3,
+  magic: 1,
+  yugioh: 2,
+  "flesh-and-blood": 62,
+  lorcana: 77,
+  "one-piece-card-game": 58,
+};
+
+// POST /api/cards/scan
+router.post("/scan", async (req, res) => {
+  const { game, image } = req.body as { game?: string; image?: string };
+
+  if (!image) {
+    res.status(400).json({ error: "image is required" });
+    return;
+  }
+
+  const gameId = TCGTRACKING_GAME_IDS[game ?? "pokemon"] ?? 3;
+
+  try {
+    const response = await fetch("https://openapi.tcgtracking.com/v1/scan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ game_id: gameId, image }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      req.log.error({ status: response.status, body: text }, "tcgtracking scan error");
+      res.status(502).json({ error: "Scan API error" });
+      return;
+    }
+
+    const data = await response.json() as {
+      success: boolean;
+      results?: Array<{
+        product_id: number;
+        score: number;
+        name: string;
+        number?: string;
+        printing?: string;
+        set_id?: number;
+      }>;
+      candidates_scanned?: number;
+    };
+
+    res.json({
+      success: data.success,
+      results: (data.results ?? []).map((r) => ({
+        product_id: r.product_id,
+        score: r.score,
+        name: r.name,
+        number: r.number ?? null,
+        printing: r.printing ?? null,
+        set_id: r.set_id ?? null,
+      })),
+      candidates_scanned: data.candidates_scanned ?? 0,
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to scan card");
+    res.status(502).json({ error: "Failed to reach scan API" });
+  }
+});
+
 export default router;

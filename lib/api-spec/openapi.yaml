@@ -185,8 +185,66 @@ paths:
         "404":
           description: Not found
 
+  /cards/scan:
+    post:
+      operationId: scanCard
+      tags: [cards]
+      summary: Identify a card from an image using tcgtracking scan API
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScanCardRequest"
+      responses:
+        "200":
+          description: Scan results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardScanResponse"
+
 components:
   schemas:
+    ScanCardRequest:
+      type: object
+      properties:
+        game:
+          type: string
+        image:
+          type: string
+      required: [game, image]
+
+    ScanMatch:
+      type: object
+      properties:
+        product_id:
+          type: integer
+        score:
+          type: integer
+        name:
+          type: string
+        number:
+          type: ["string", "null"]
+        printing:
+          type: ["string", "null"]
+        set_id:
+          type: ["integer", "null"]
+      required: [product_id, score, name]
+
+    CardScanResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScanMatch"
+        candidates_scanned:
+          type: integer
+      required: [success, results, candidates_scanned]
+
     HealthStatus:
       type: object
       properties:

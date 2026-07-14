@@ -3,11 +3,12 @@ import {
   useSearchCards,
   useAddToCollection,
   useGetConditionPrices,
+  useScanCard,
   getGetCollectionQueryKey,
   getGetCollectionSummaryQueryKey,
 } from "@workspace/api-client-react";
 import type { TcgCard } from "@workspace/api-client-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,7 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Search as SearchIcon, Plus, Loader2, ShoppingCart, TrendingDown, Package } from "lucide-react";
+import { Search as SearchIcon, Plus, Loader2, ShoppingCart, TrendingDown, Package, Camera, X } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -27,6 +28,40 @@ import {
 } from "@/components/ui/select";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+
+async function resizeImageToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const MAX_B64_LEN = 70000;
+      const maxW = 400;
+      const maxH = 560;
+      let scale = 1;
+      if (img.width > maxW || img.height > maxH) {
+        scale = Math.min(maxW / img.width, maxH / img.height);
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const tryQuality = (q: number) => {
+        const dataUrl = canvas.toDataURL("image/jpeg", q);
+        const b64 = dataUrl.split(",")[1];
+        if (b64.length <= MAX_B64_LEN || q <= 0.2) {
+          resolve(b64);
+        } else {
+          tryQuality(Math.round((q - 0.1) * 10) / 10);
+        }
+      };
+      tryQuality(0.85);
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
 
 const GAMES = [
   { label: "Pokemon", value: "pokemon" },
@@ -260,8 +295,42 @@ export default function Search() {
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [game, setGame] = useState<string>("pokemon");
   const [selectedCard, setSelectedCard] = useState<TcgCard | null>(null);
+  const [scanLabel, setScanLabel] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const scanMutation = useScanCard();
+
+  const handleScanFile = async (file: File) => {
+    setScanLabel(null);
+    try {
+      const image = await resizeImageToBase64(file);
+      scanMutation.mutate(
+        { data: { game, image } },
+        {
+          onSuccess: (data) => {
+            const top = data.results[0];
+            if (!top) {
+              toast({ title: "No match found", description: "Couldn't identify the card. Try a clearer photo.", variant: "destructive" });
+              return;
+            }
+            const label = top.number ? `${top.name} · #${top.number}` : top.name;
+            setScanLabel(`${label} (${top.score}% match)`);
+            const searchName = top.number
+              ? `${top.name} ${top.number.split("/")[0]}`
+              : top.name;
+            setQuery(searchName);
+            setDebouncedQuery(searchName);
+          },
+          onError: () => {
+            toast({ title: "Scan failed", description: "Could not reach the scan API.", variant: "destructive" });
+          },
+        }
+      );
+    } catch {
+      toast({ title: "Image error", description: "Could not process the image.", variant: "destructive" });
+    }
+  };
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -327,14 +396,49 @@ export default function Search() {
 
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="relative flex-1">
-            <SearchIcon className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
+            <SearchIcon className="absolute left-3 top-3.5 h-5 w-5 text-muted-foreground" />
             <Input
               placeholder="Search for a card... (min 3 chars)"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              className="pl-10 h-12 text-lg bg-card border-border shadow-sm focus-visible:ring-primary"
+              onChange={(e) => { setQuery(e.target.value); setScanLabel(null); }}
+              className="pl-10 pr-12 h-12 text-lg bg-card border-border shadow-sm focus-visible:ring-primary"
             />
+            {query && (
+              <button
+                onClick={() => { setQuery(""); setDebouncedQuery(""); setScanLabel(null); }}
+                className="absolute right-3 top-3.5 text-muted-foreground hover:text-foreground transition-colors"
+                aria-label="Clear search"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            )}
           </div>
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-12 w-12 shrink-0 bg-card border-border shadow-sm"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={scanMutation.isPending}
+            title="Scan card from photo"
+          >
+            {scanMutation.isPending ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Camera className="h-5 w-5" />
+            )}
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleScanFile(file);
+              e.target.value = "";
+            }}
+          />
           <Select value={game} onValueChange={setGame}>
             <SelectTrigger className="w-full sm:w-[200px] h-12 text-base bg-card border-border shadow-sm">
               <SelectValue placeholder="Select Game" />
@@ -349,10 +453,17 @@ export default function Search() {
           </Select>
         </div>
 
-        <p className="text-sm text-muted-foreground -mt-2">
-          Search by name or include a card number — e.g. "Charizard ex 199" or
-          "Pikachu 151"
-        </p>
+        {scanLabel ? (
+          <p className="text-sm -mt-2 flex items-center gap-1.5 text-primary">
+            <Camera className="h-3.5 w-3.5" />
+            <span className="font-medium">Scanned:</span> {scanLabel}
+          </p>
+        ) : (
+          <p className="text-sm text-muted-foreground -mt-2">
+            Search by name or include a card number — e.g. "Charizard ex 199" or
+            "Pikachu 151"
+          </p>
+        )}
 
         {debouncedQuery.length > 2 && (
           <div className="pt-4">

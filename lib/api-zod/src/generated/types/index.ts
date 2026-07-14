@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './cardScanResponse';
 export * from './collectionItem';
 export * from './collectionItemInput';
 export * from './collectionItemUpdate';
@@ -14,5 +15,7 @@ export * from './conditionPricesResponse';
 export * from './conditionSku';
 export * from './gameBreakdown';
 export * from './healthStatus';
+export * from './scanCardRequest';
+export * from './scanMatch';
 export * from './searchCardsParams';
 export * from './tcgCard';

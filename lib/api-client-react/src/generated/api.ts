@@ -20,12 +20,14 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  CardScanResponse,
   CollectionItem,
   CollectionItemInput,
   CollectionItemUpdate,
   CollectionSummary,
   ConditionPricesResponse,
   HealthStatus,
+  ScanCardRequest,
   SearchCardsParams,
   TcgCard
 } from './api.schemas';
@@ -740,4 +742,75 @@ export function useGetConditionPrices<TData = Awaited<ReturnType<typeof getCondi
 
 
 
+
+export const getScanCardUrl = () => {
+
+
+
+
+  return `/api/cards/scan`
+}
+
+/**
+ * @summary Identify a card from an image using tcgtracking scan API
+ */
+export const scanCard = async (scanCardRequest: ScanCardRequest, options?: RequestInit): Promise<CardScanResponse> => {
+
+  return customFetch<CardScanResponse>(getScanCardUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(scanCardRequest)
+  }
+);}
+
+
+
+
+
+export const getScanCardMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof scanCard>>, TError,{data: BodyType<ScanCardRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof scanCard>>, TError,{data: BodyType<ScanCardRequest>}, TContext> => {
+
+const mutationKey = ['scanCard'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof scanCard>>, {data: BodyType<ScanCardRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  scanCard(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ScanCardMutationResult = NonNullable<Awaited<ReturnType<typeof scanCard>>>
+    export type ScanCardMutationBody = BodyType<ScanCardRequest>
+    export type ScanCardMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Identify a card from an image using tcgtracking scan API
+ */
+export const useScanCard = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof scanCard>>, TError,{data: BodyType<ScanCardRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof scanCard>>,
+        TError,
+        {data: BodyType<ScanCardRequest>},
+        TContext
+      > => {
+      return useMutation(getScanCardMutationOptions(options));
+    }
 

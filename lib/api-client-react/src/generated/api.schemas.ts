@@ -5,6 +5,29 @@
  * TCG Collection Tracker API
  * OpenAPI spec version: 0.1.0
  */
+export interface ScanCardRequest {
+  game: string;
+  image: string;
+}
+
+export interface ScanMatch {
+  product_id: number;
+  score: number;
+  name: string;
+  /** @nullable */
+  number?: string | null;
+  /** @nullable */
+  printing?: string | null;
+  /** @nullable */
+  set_id?: number | null;
+}
+
+export interface CardScanResponse {
+  success: boolean;
+  results: ScanMatch[];
+  candidates_scanned: number;
+}
+
 export interface HealthStatus {
   status: string;
 }
