@@ -40,6 +40,32 @@ export interface TcgCard {
   lowest_with_shipping?: number | null;
   /** @nullable */
   price_updated_at?: string | null;
+  /** @nullable */
+  tcgplayer_id?: number | null;
+}
+
+export interface ConditionSku {
+  sku_id: number;
+  condition_name: string;
+  variant_name: string;
+  language_name: string;
+  /** @nullable */
+  market_price?: number | null;
+  /** @nullable */
+  lowest_price?: number | null;
+  /** @nullable */
+  highest_price?: number | null;
+  /** @nullable */
+  price_count?: number | null;
+  /** @nullable */
+  price_updated_at?: string | null;
+}
+
+export interface ConditionPricesResponse {
+  product_id: number;
+  /** @nullable */
+  product_name?: string | null;
+  skus: ConditionSku[];
 }
 
 export interface CollectionItem {

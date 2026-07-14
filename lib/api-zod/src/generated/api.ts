@@ -191,8 +191,33 @@ export const SearchCardsResponseItem = zod.object({
   "total_listings": zod.number().nullish(),
   "foil_only": zod.number().nullish(),
   "lowest_with_shipping": zod.number().nullish(),
-  "price_updated_at": zod.string().nullish()
+  "price_updated_at": zod.string().nullish(),
+  "tcgplayer_id": zod.number().nullish()
 })
 export const SearchCardsResponse = zod.array(SearchCardsResponseItem)
+
+
+/**
+ * @summary Get per-condition prices for a card from tcgtracking.com
+ */
+export const GetConditionPricesParams = zod.object({
+  "tcgplayerId": zod.coerce.number()
+})
+
+export const GetConditionPricesResponse = zod.object({
+  "product_id": zod.number(),
+  "product_name": zod.string().nullish(),
+  "skus": zod.array(zod.object({
+  "sku_id": zod.number(),
+  "condition_name": zod.string(),
+  "variant_name": zod.string(),
+  "language_name": zod.string(),
+  "market_price": zod.number().nullish(),
+  "lowest_price": zod.number().nullish(),
+  "highest_price": zod.number().nullish(),
+  "price_count": zod.number().nullish(),
+  "price_updated_at": zod.string().nullish()
+}))
+})
 
 

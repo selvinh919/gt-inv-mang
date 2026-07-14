@@ -90,4 +90,71 @@ router.get("/search", async (req, res) => {
   }
 });
 
+// GET /api/cards/:tcgplayerId/condition-prices
+router.get("/:tcgplayerId/condition-prices", async (req, res) => {
+  const tcgplayerId = Number(req.params.tcgplayerId);
+  if (!Number.isInteger(tcgplayerId) || tcgplayerId <= 0) {
+    res.status(400).json({ error: "Invalid tcgplayerId" });
+    return;
+  }
+
+  try {
+    const response = await fetch(
+      `https://openapi.tcgtracking.com/v1/products/${tcgplayerId}`,
+      { headers: { Accept: "application/json" } }
+    );
+
+    if (response.status === 404) {
+      res.status(404).json({ error: "Product not found" });
+      return;
+    }
+
+    if (!response.ok) {
+      req.log.error({ status: response.status }, "tcgtracking error");
+      res.status(502).json({ error: `tcgtracking error: ${response.status}` });
+      return;
+    }
+
+    const data = await response.json() as {
+      success: boolean;
+      product_id: number;
+      product?: { name?: string };
+      skus?: Array<{
+        sku_id: number;
+        condition_name: string;
+        variant_name: string;
+        language_name: string;
+        market_price: string | null;
+        lowest_price: string | null;
+        highest_price: string | null;
+        price_count: number | null;
+        price_updated_at: string | null;
+      }>;
+    };
+
+    const skus = (data.skus ?? [])
+      .filter((s) => s.language_name === "English")
+      .map((s) => ({
+        sku_id: s.sku_id,
+        condition_name: s.condition_name,
+        variant_name: s.variant_name,
+        language_name: s.language_name,
+        market_price: s.market_price ? parseFloat(s.market_price) : null,
+        lowest_price: s.lowest_price ? parseFloat(s.lowest_price) : null,
+        highest_price: s.highest_price ? parseFloat(s.highest_price) : null,
+        price_count: s.price_count,
+        price_updated_at: s.price_updated_at,
+      }));
+
+    res.json({
+      product_id: data.product_id,
+      product_name: data.product?.name ?? null,
+      skus,
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to fetch condition prices");
+    res.status(502).json({ error: "Failed to reach tcgtracking" });
+  }
+});
+
 export default router;

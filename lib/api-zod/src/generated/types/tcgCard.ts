@@ -37,4 +37,6 @@ export interface TcgCard {
   lowest_with_shipping?: number | null;
   /** @nullable */
   price_updated_at?: string | null;
+  /** @nullable */
+  tcgplayer_id?: number | null;
 }

@@ -164,6 +164,27 @@ paths:
                 items:
                   $ref: "#/components/schemas/TcgCard"
 
+  /cards/{tcgplayerId}/condition-prices:
+    get:
+      operationId: getConditionPrices
+      tags: [cards]
+      summary: Get per-condition prices for a card from tcgtracking.com
+      parameters:
+        - name: tcgplayerId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Per-condition SKU pricing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConditionPricesResponse"
+        "404":
+          description: Not found
+
 components:
   schemas:
     HealthStatus:
@@ -209,9 +230,53 @@ components:
           type: ["number", "null"]
         price_updated_at:
           type: ["string", "null"]
+        tcgplayer_id:
+          type: ["integer", "null"]
       required:
         - id
         - name
+
+    ConditionSku:
+      type: object
+      properties:
+        sku_id:
+          type: integer
+        condition_name:
+          type: string
+        variant_name:
+          type: string
+        language_name:
+          type: string
+        market_price:
+          type: ["number", "null"]
+        lowest_price:
+          type: ["number", "null"]
+        highest_price:
+          type: ["number", "null"]
+        price_count:
+          type: ["integer", "null"]
+        price_updated_at:
+          type: ["string", "null"]
+      required:
+        - sku_id
+        - condition_name
+        - variant_name
+        - language_name
+
+    ConditionPricesResponse:
+      type: object
+      properties:
+        product_id:
+          type: integer
+        product_name:
+          type: ["string", "null"]
+        skus:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConditionSku"
+      required:
+        - product_id
+        - skus
 
     CollectionItem:
       type: object

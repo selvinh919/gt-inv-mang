@@ -10,6 +10,8 @@ export * from './collectionItem';
 export * from './collectionItemInput';
 export * from './collectionItemUpdate';
 export * from './collectionSummary';
+export * from './conditionPricesResponse';
+export * from './conditionSku';
 export * from './gameBreakdown';
 export * from './healthStatus';
 export * from './searchCardsParams';

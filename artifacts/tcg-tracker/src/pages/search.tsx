@@ -2,10 +2,11 @@ import { AppLayout } from "@/components/layout/app-layout";
 import {
   useSearchCards,
   useAddToCollection,
+  useGetConditionPrices,
   getGetCollectionQueryKey,
   getGetCollectionSummaryQueryKey,
 } from "@workspace/api-client-react";
-import type { SearchCardsResponseItem } from "@workspace/api-client-react";
+import type { TcgCard } from "@workspace/api-client-react";
 import { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -36,8 +37,24 @@ const GAMES = [
   { label: "One Piece", value: "one-piece-card-game" },
 ];
 
+const CONDITION_ORDER = [
+  "Near Mint",
+  "Lightly Played",
+  "Moderately Played",
+  "Heavily Played",
+  "Damaged",
+];
+
+const CONDITION_SHORT: Record<string, string> = {
+  "Near Mint": "NM",
+  "Lightly Played": "LP",
+  "Moderately Played": "MP",
+  "Heavily Played": "HP",
+  "Damaged": "DMG",
+};
+
 const fmt = (value: number | null | undefined) => {
-  if (value === null || value === undefined) return "N/A";
+  if (value === null || value === undefined) return "—";
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
@@ -65,12 +82,30 @@ function CardDetailModal({
   onAdd,
   isPending,
 }: {
-  card: SearchCardsResponseItem | null;
+  card: TcgCard | null;
   open: boolean;
   onClose: () => void;
-  onAdd: (card: SearchCardsResponseItem) => void;
+  onAdd: (card: TcgCard, condition: string) => void;
   isPending: boolean;
 }) {
+  const [selectedCondition, setSelectedCondition] = useState("Near Mint");
+
+  const tcgplayerId = card?.tcgplayer_id ?? null;
+  const { data: conditionData, isLoading: conditionLoading } = useGetConditionPrices(
+    tcgplayerId ?? 0,
+    {
+      query: {
+        enabled: tcgplayerId != null && open,
+        staleTime: 5 * 60 * 1000,
+        queryKey: ["conditionPrices", tcgplayerId],
+      },
+    }
+  );
+
+  useEffect(() => {
+    setSelectedCondition("Near Mint");
+  }, [card?.id]);
+
   if (!card) return null;
 
   const printingLabel = getPrintingLabel(card.printing);
@@ -84,6 +119,15 @@ function CardDetailModal({
       })
     : null;
 
+  const skus = conditionData?.skus ?? [];
+  const conditionNames = CONDITION_ORDER.filter((c) =>
+    skus.some((s) => s.condition_name === c)
+  );
+
+  const selectedSku = skus.find((s) => s.condition_name === selectedCondition) ?? null;
+
+  const hasConditionData = skus.length > 0;
+
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-lg bg-card border-border">
@@ -94,7 +138,6 @@ function CardDetailModal({
         </DialogHeader>
 
         <div className="flex gap-4">
-          {/* Card image */}
           <div className="w-36 shrink-0 rounded-lg overflow-hidden bg-black">
             {card.image_url ? (
               <img
@@ -109,7 +152,6 @@ function CardDetailModal({
             )}
           </div>
 
-          {/* Details */}
           <div className="flex-1 space-y-3 min-w-0">
             <div className="space-y-1 text-sm">
               <div className="text-muted-foreground">{card.set_name}</div>
@@ -137,7 +179,7 @@ function CardDetailModal({
               </div>
             </div>
 
-            {/* Pricing grid */}
+            {/* TCGPlayer market prices (always shown) */}
             <div className="grid grid-cols-2 gap-2">
               <div className="rounded-lg bg-muted/60 px-3 py-2">
                 <div className="text-xs text-muted-foreground mb-0.5 flex items-center gap-1">
@@ -155,26 +197,6 @@ function CardDetailModal({
                   {fmt(card.low_price)}
                 </div>
               </div>
-              {card.lowest_with_shipping != null && (
-                <div className="rounded-lg bg-muted/60 px-3 py-2">
-                  <div className="text-xs text-muted-foreground mb-0.5">
-                    + Shipping
-                  </div>
-                  <div className="font-mono font-bold">
-                    {fmt(card.lowest_with_shipping)}
-                  </div>
-                </div>
-              )}
-              {card.median_price != null && (
-                <div className="rounded-lg bg-muted/60 px-3 py-2">
-                  <div className="text-xs text-muted-foreground mb-0.5">
-                    Median
-                  </div>
-                  <div className="font-mono font-bold">
-                    {fmt(card.median_price)}
-                  </div>
-                </div>
-              )}
             </div>
 
             {card.total_listings != null && (
@@ -187,13 +209,83 @@ function CardDetailModal({
           </div>
         </div>
 
+        {/* Condition-based pricing section */}
+        <div className="border-t border-border pt-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold">Price by Condition</span>
+            {conditionLoading && (
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+            )}
+            {!tcgplayerId && !conditionLoading && (
+              <span className="text-xs text-muted-foreground">No TCGPlayer ID</span>
+            )}
+          </div>
+
+          {hasConditionData ? (
+            <>
+              {/* Condition pills */}
+              <div className="flex flex-wrap gap-1.5">
+                {conditionNames.map((cond) => (
+                  <button
+                    key={cond}
+                    onClick={() => setSelectedCondition(cond)}
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                      selectedCondition === cond
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted text-muted-foreground hover:bg-muted/80"
+                    }`}
+                  >
+                    {CONDITION_SHORT[cond] ?? cond}
+                  </button>
+                ))}
+              </div>
+
+              {/* Selected condition price details */}
+              {selectedSku && (
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="rounded-lg bg-muted/60 px-3 py-2">
+                    <div className="text-xs text-muted-foreground mb-0.5">Market</div>
+                    <div className="font-mono font-bold text-primary text-sm">
+                      {fmt(selectedSku.market_price)}
+                    </div>
+                  </div>
+                  <div className="rounded-lg bg-muted/60 px-3 py-2">
+                    <div className="text-xs text-muted-foreground mb-0.5">Low</div>
+                    <div className="font-mono font-bold text-sm">
+                      {fmt(selectedSku.lowest_price)}
+                    </div>
+                  </div>
+                  <div className="rounded-lg bg-muted/60 px-3 py-2">
+                    <div className="text-xs text-muted-foreground mb-0.5">High</div>
+                    <div className="font-mono font-bold text-sm">
+                      {fmt(selectedSku.highest_price)}
+                    </div>
+                  </div>
+                </div>
+              )}
+              {selectedSku?.price_count != null && (
+                <p className="text-xs text-muted-foreground">
+                  {selectedSku.price_count} listings · {selectedSku.variant_name}
+                  {selectedSku.price_updated_at && (
+                    <> · Updated {new Date(selectedSku.price_updated_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</>
+                  )}
+                </p>
+              )}
+            </>
+          ) : !conditionLoading && tcgplayerId ? (
+            <p className="text-xs text-muted-foreground">
+              No per-condition data available for this card.
+            </p>
+          ) : null}
+        </div>
+
         <Button
-          className="w-full mt-2"
-          onClick={() => onAdd(card)}
+          className="w-full mt-1"
+          onClick={() => onAdd(card, selectedCondition)}
           disabled={isPending}
         >
           <Plus className="h-4 w-4 mr-2" />
-          Add to Collection — {printingLabel} · {fmt(card.market_price)}
+          Add — {CONDITION_SHORT[selectedCondition] ?? selectedCondition} · {printingLabel} · {fmt(selectedSku?.market_price ?? card.market_price)}
         </Button>
       </DialogContent>
     </Dialog>
@@ -204,7 +296,7 @@ export default function Search() {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [game, setGame] = useState<string>("pokemon");
-  const [selectedCard, setSelectedCard] = useState<SearchCardsResponseItem | null>(null);
+  const [selectedCard, setSelectedCard] = useState<TcgCard | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -227,7 +319,7 @@ export default function Search() {
 
   const addMutation = useAddToCollection();
 
-  const handleAdd = (card: SearchCardsResponseItem) => {
+  const handleAdd = (card: TcgCard, condition: string) => {
     const printingLabel = getPrintingLabel(card.printing);
     addMutation.mutate(
       {
@@ -248,7 +340,7 @@ export default function Search() {
         onSuccess: () => {
           toast({
             title: "Added to collection",
-            description: `${card.name} (${printingLabel}) has been added.`,
+            description: `${card.name} (${printingLabel} · ${condition}) has been added.`,
           });
           setSelectedCard(null);
           queryClient.invalidateQueries({ queryKey: getGetCollectionQueryKey() });
@@ -316,7 +408,6 @@ export default function Search() {
                       className="flex flex-col rounded-xl border border-border bg-card shadow-sm overflow-hidden group cursor-pointer hover:border-primary/50 transition-colors"
                       onClick={() => setSelectedCard(card)}
                     >
-                      {/* Card image — fills container, no padding, black bg hides white corners */}
                       <div className="aspect-[2.5/3.5] bg-black w-full overflow-hidden">
                         {card.image_url ? (
                           <img
@@ -349,7 +440,6 @@ export default function Search() {
                           )}
                         </div>
 
-                        {/* Single printing button — real data only */}
                         <Button
                           size="sm"
                           variant="outline"
@@ -360,7 +450,7 @@ export default function Search() {
                           }`}
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleAdd(card);
+                            handleAdd(card, "Near Mint");
                           }}
                           disabled={addMutation.isPending}
                         >

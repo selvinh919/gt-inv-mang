@@ -24,6 +24,7 @@ import type {
   CollectionItemInput,
   CollectionItemUpdate,
   CollectionSummary,
+  ConditionPricesResponse,
   HealthStatus,
   SearchCardsParams,
   TcgCard
@@ -651,6 +652,83 @@ export function useSearchCards<TData = Awaited<ReturnType<typeof searchCards>>, 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getSearchCardsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetConditionPricesUrl = (tcgplayerId: number,) => {
+
+
+
+
+  return `/api/cards/${tcgplayerId}/condition-prices`
+}
+
+/**
+ * @summary Get per-condition prices for a card from tcgtracking.com
+ */
+export const getConditionPrices = async (tcgplayerId: number, options?: RequestInit): Promise<ConditionPricesResponse> => {
+
+  return customFetch<ConditionPricesResponse>(getGetConditionPricesUrl(tcgplayerId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetConditionPricesQueryKey = (tcgplayerId: number,) => {
+    return [
+    `/api/cards/${tcgplayerId}/condition-prices`
+    ] as const;
+    }
+
+
+export const getGetConditionPricesQueryOptions = <TData = Awaited<ReturnType<typeof getConditionPrices>>, TError = ErrorType<void>>(tcgplayerId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getConditionPrices>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetConditionPricesQueryKey(tcgplayerId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getConditionPrices>>> = ({ signal }) => getConditionPrices(tcgplayerId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: tcgplayerId !== null && tcgplayerId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getConditionPrices>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetConditionPricesQueryResult = NonNullable<Awaited<ReturnType<typeof getConditionPrices>>>
+export type GetConditionPricesQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get per-condition prices for a card from tcgtracking.com
+ */
+
+export function useGetConditionPrices<TData = Awaited<ReturnType<typeof getConditionPrices>>, TError = ErrorType<void>>(
+ tcgplayerId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getConditionPrices>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetConditionPricesQueryOptions(tcgplayerId,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
