@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "installCommand": "pnpm install",
+  "buildCommand": "pnpm --filter @workspace/tcg-tracker run build",
+  "outputDirectory": "artifacts/tcg-tracker/dist/public",
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "/api/index" },
+    { "source": "/((?!api).*)", "destination": "/index.html" }
+  ]
+}
