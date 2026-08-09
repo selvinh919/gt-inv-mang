@@ -2,7 +2,7 @@ import { AppLayout } from "@/components/layout/app-layout";
 import { useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Search as SearchIcon, Minus, Plus, Trash2, ArrowUpDown, FolderPlus, Wallet, TrendingUp, Pencil } from "lucide-react";
+import { Search as SearchIcon, Minus, Plus, Trash2, ArrowUpDown, FolderPlus, Wallet, TrendingUp, Pencil, Cloud, CloudOff, LoaderCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link } from "wouter";
@@ -128,6 +128,7 @@ export default function Collection() {
   const filterInputRef = useRef<HTMLInputElement>(null);
 
   const {
+    syncState,
     collections,
     activeCollection,
     activeItems,
@@ -293,6 +294,39 @@ export default function Collection() {
           <Link href="/search">
             <Button size="lg" className="font-bold tracking-wide">Add Product</Button>
           </Link>
+        </div>
+
+        <div
+          className={`flex items-start gap-3 rounded-xl border px-4 py-3 text-sm ${
+            syncState.status === "error"
+              ? "border-destructive/50 bg-destructive/10 text-destructive"
+              : "border-border bg-card text-muted-foreground"
+          }`}
+          role={syncState.status === "error" ? "alert" : "status"}
+        >
+          {syncState.status === "error" ? (
+            <CloudOff className="mt-0.5 h-4 w-4 shrink-0" />
+          ) : syncState.status === "syncing" ? (
+            <LoaderCircle className="mt-0.5 h-4 w-4 shrink-0 animate-spin" />
+          ) : (
+            <Cloud className="mt-0.5 h-4 w-4 shrink-0" />
+          )}
+          <div>
+            <div className="font-medium text-foreground">
+              {syncState.status === "error"
+                ? "Server sync failed"
+                : syncState.status === "syncing"
+                  ? "Saving inventory to the server…"
+                  : syncState.status === "synced"
+                    ? "Inventory saved to the server"
+                    : "Inventory sync is ready"}
+            </div>
+            {syncState.error ? (
+              <div className="mt-1">{syncState.error}. Your local copy is preserved and will retry automatically.</div>
+            ) : syncState.lastSyncedAt ? (
+              <div className="mt-1">Last confirmed {new Date(syncState.lastSyncedAt).toLocaleString()}.</div>
+            ) : null}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

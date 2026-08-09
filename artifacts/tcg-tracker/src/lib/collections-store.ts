@@ -74,6 +74,12 @@ export type InventoryAuditLog = {
   metadata: Record<string, unknown> | null;
 };
 
+export type InventorySyncState = {
+  status: "idle" | "syncing" | "synced" | "error";
+  error: string | null;
+  lastSyncedAt: string | null;
+};
+
 type StoreState = {
   version: 3;
   nextCollectionId: number;
@@ -143,12 +149,26 @@ let currentState: StoreState | null = null;
 let currentUserScope: number | null = null;
 let remoteHydrationInFlight = false;
 let remoteHydrationLastAt = 0;
+let remoteSyncState: InventorySyncState = {
+  status: "idle",
+  error: null,
+  lastSyncedAt: null,
+};
 
 const REMOTE_HYDRATE_MIN_INTERVAL_MS = 3000;
 const REMOTE_HYDRATE_POLL_MS = 15000;
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function setRemoteSyncState(next: InventorySyncState) {
+  remoteSyncState = next;
+  listeners.forEach((listener) => listener());
+}
+
+function getRemoteSyncSnapshot() {
+  return remoteSyncState;
 }
 
 function normalizeMoney(value: number): number {
@@ -281,7 +301,7 @@ function toRemotePayload(item: CollectionCardItem): Record<string, unknown> {
   };
 }
 
-async function syncRemoteUpsertItem(item: CollectionCardItem): Promise<number | null> {
+async function performRemoteUpsertItem(item: CollectionCardItem): Promise<number | null> {
   const token = getAuthToken();
   if (!token) return null;
 
@@ -330,6 +350,20 @@ async function syncRemoteUpsertItem(item: CollectionCardItem): Promise<number | 
   return Number(created?.id || 0) || null;
 }
 
+async function syncRemoteUpsertItem(item: CollectionCardItem): Promise<number | null> {
+  if (!getAuthToken()) return null;
+  setRemoteSyncState({ status: "syncing", error: null, lastSyncedAt: remoteSyncState.lastSyncedAt });
+  try {
+    const remoteId = await performRemoteUpsertItem(item);
+    setRemoteSyncState({ status: "synced", error: null, lastSyncedAt: nowIso() });
+    return remoteId;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Inventory could not be saved to the server";
+    setRemoteSyncState({ status: "error", error: message, lastSyncedAt: remoteSyncState.lastSyncedAt });
+    throw error;
+  }
+}
+
 async function syncRemoteDeleteItem(item: CollectionCardItem | null): Promise<void> {
   if (!item) return;
   const token = getAuthToken();
@@ -374,6 +408,7 @@ async function hydrateRemoteIntoStore(force = false): Promise<void> {
   }
 
   remoteHydrationInFlight = true;
+  setRemoteSyncState({ status: "syncing", error: null, lastSyncedAt: remoteSyncState.lastSyncedAt });
   try {
     const remoteItems = await fetchRemoteItems();
     if (!remoteItems) return;
@@ -414,6 +449,7 @@ async function hydrateRemoteIntoStore(force = false): Promise<void> {
         : collections[0]?.id ?? 1,
     });
 
+    let backfillError: unknown = null;
     for (const unsynced of carriedUnsyncedItems) {
       try {
         const remoteId = await syncRemoteUpsertItem(unsynced);
@@ -421,13 +457,21 @@ async function hydrateRemoteIntoStore(force = false): Promise<void> {
           attachRemoteIdToLocalItem(unsynced.id, remoteId);
         }
       } catch (error) {
+        backfillError = error;
         console.warn("Remote inventory backfill failed", error);
       }
     }
 
+    if (backfillError) {
+      throw backfillError;
+    }
+
     remoteHydrationLastAt = Date.now();
+    setRemoteSyncState({ status: "synced", error: null, lastSyncedAt: nowIso() });
   } catch (error) {
     console.warn("Remote inventory hydration failed", error);
+    const message = error instanceof Error ? error.message : "Inventory could not be loaded from the server";
+    setRemoteSyncState({ status: "error", error: message, lastSyncedAt: remoteSyncState.lastSyncedAt });
   } finally {
     remoteHydrationInFlight = false;
   }
@@ -1088,6 +1132,7 @@ function getPosSummary(items: CollectionCardItem[], sales: SaleRecord[]) {
 
 export function useCollectionsStore() {
   const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const syncState = useSyncExternalStore(subscribe, getRemoteSyncSnapshot, getRemoteSyncSnapshot);
 
   useEffect(() => {
     void hydrateRemoteIntoStore(true);
@@ -1125,6 +1170,7 @@ export function useCollectionsStore() {
   const activeSales = getCollectionSales(safeState, activeCollection.id);
 
   return {
+    syncState,
     state: safeState,
     collections: safeState.collections,
     activeCollection,

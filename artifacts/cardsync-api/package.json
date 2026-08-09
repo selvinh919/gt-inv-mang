@@ -2,6 +2,9 @@
   "name": "cardsync-api",
   "private": true,
   "type": "module",
+  "scripts": {
+    "test": "node --test api/_lib/*.test.js"
+  },
   "dependencies": {
     "jose": "^6.2.8",
     "pg": "^8.16.3",
