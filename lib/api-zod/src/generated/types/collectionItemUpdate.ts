@@ -7,9 +7,42 @@
  */
 
 export interface CollectionItemUpdate {
+  collection_id?: number;
+  /** @nullable */
+  sku?: string | null;
+  /** @nullable */
+  barcode?: string | null;
+  /** @nullable */
+  vendor_brand?: string | null;
+  /** @nullable */
+  product_category?: string | null;
+  card_name?: string;
+  /** @nullable */
+  set_name?: string | null;
+  /** @nullable */
+  game_name?: string | null;
+  /** @nullable */
+  rarity?: string | null;
+  printing?: string;
+  /** @nullable */
+  low_price?: number | null;
+  /** @nullable */
+  image_url?: string | null;
   quantity?: number;
   /** @nullable */
   notes?: string | null;
   /** @nullable */
   market_price?: number | null;
+  /** @nullable */
+  price_paid?: number | null;
+  /** @nullable */
+  price_paid_input_type?: string | null;
+  /** @nullable */
+  price_paid_percent?: number | null;
+  /** @nullable */
+  sale_price_source?: string | null;
+  /** @nullable */
+  sale_price_rule?: string | null;
+  /** @nullable */
+  market_price_at_add?: number | null;
 }

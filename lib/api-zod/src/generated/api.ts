@@ -22,6 +22,11 @@ export const HealthCheckResponse = zod.object({
  */
 export const GetCollectionResponseItem = zod.object({
   "id": zod.number(),
+  "collection_id": zod.number(),
+  "sku": zod.string().nullish(),
+  "barcode": zod.string().nullish(),
+  "vendor_brand": zod.string().nullish(),
+  "product_category": zod.string().nullish(),
   "card_id": zod.number(),
   "card_name": zod.string(),
   "set_name": zod.string().nullish(),
@@ -33,7 +38,14 @@ export const GetCollectionResponseItem = zod.object({
   "image_url": zod.string().nullish(),
   "quantity": zod.number(),
   "notes": zod.string().nullish(),
-  "added_at": zod.string()
+  "price_paid": zod.number().nullish(),
+  "price_paid_input_type": zod.string().nullish(),
+  "price_paid_percent": zod.number().nullish(),
+  "sale_price_source": zod.string().nullish(),
+  "sale_price_rule": zod.string().nullish(),
+  "market_price_at_add": zod.number().nullish(),
+  "added_at": zod.string(),
+  "updated_at": zod.string()
 })
 export const GetCollectionResponse = zod.array(GetCollectionResponseItem)
 
@@ -42,21 +54,11 @@ export const GetCollectionResponse = zod.array(GetCollectionResponseItem)
  * @summary Add a card to collection
  */
 export const AddToCollectionBody = zod.object({
-  "card_id": zod.number(),
-  "card_name": zod.string(),
-  "set_name": zod.string().nullish(),
-  "game_name": zod.string().nullish(),
-  "rarity": zod.string().nullish(),
-  "printing": zod.string(),
-  "market_price": zod.number().nullish(),
-  "low_price": zod.number().nullish(),
-  "image_url": zod.string().nullish(),
-  "quantity": zod.number(),
-  "notes": zod.string().nullish()
-})
-
-export const AddToCollectionResponse = zod.object({
-  "id": zod.number(),
+  "collection_id": zod.number().optional(),
+  "sku": zod.string().nullish(),
+  "barcode": zod.string().nullish(),
+  "vendor_brand": zod.string().nullish(),
+  "product_category": zod.string().nullish(),
   "card_id": zod.number(),
   "card_name": zod.string(),
   "set_name": zod.string().nullish(),
@@ -68,7 +70,40 @@ export const AddToCollectionResponse = zod.object({
   "image_url": zod.string().nullish(),
   "quantity": zod.number(),
   "notes": zod.string().nullish(),
-  "added_at": zod.string()
+  "price_paid": zod.number().nullish(),
+  "price_paid_input_type": zod.string().nullish(),
+  "price_paid_percent": zod.number().nullish(),
+  "sale_price_source": zod.string().nullish(),
+  "sale_price_rule": zod.string().nullish(),
+  "market_price_at_add": zod.number().nullish()
+})
+
+export const AddToCollectionResponse = zod.object({
+  "id": zod.number(),
+  "collection_id": zod.number(),
+  "sku": zod.string().nullish(),
+  "barcode": zod.string().nullish(),
+  "vendor_brand": zod.string().nullish(),
+  "product_category": zod.string().nullish(),
+  "card_id": zod.number(),
+  "card_name": zod.string(),
+  "set_name": zod.string().nullish(),
+  "game_name": zod.string().nullish(),
+  "rarity": zod.string().nullish(),
+  "printing": zod.string(),
+  "market_price": zod.number().nullish(),
+  "low_price": zod.number().nullish(),
+  "image_url": zod.string().nullish(),
+  "quantity": zod.number(),
+  "notes": zod.string().nullish(),
+  "price_paid": zod.number().nullish(),
+  "price_paid_input_type": zod.string().nullish(),
+  "price_paid_percent": zod.number().nullish(),
+  "sale_price_source": zod.string().nullish(),
+  "sale_price_rule": zod.string().nullish(),
+  "market_price_at_add": zod.number().nullish(),
+  "added_at": zod.string(),
+  "updated_at": zod.string()
 })
 
 
@@ -86,6 +121,11 @@ export const GetCollectionSummaryResponse = zod.object({
 })),
   "top_cards": zod.array(zod.object({
   "id": zod.number(),
+  "collection_id": zod.number(),
+  "sku": zod.string().nullish(),
+  "barcode": zod.string().nullish(),
+  "vendor_brand": zod.string().nullish(),
+  "product_category": zod.string().nullish(),
   "card_id": zod.number(),
   "card_name": zod.string(),
   "set_name": zod.string().nullish(),
@@ -97,7 +137,14 @@ export const GetCollectionSummaryResponse = zod.object({
   "image_url": zod.string().nullish(),
   "quantity": zod.number(),
   "notes": zod.string().nullish(),
-  "added_at": zod.string()
+  "price_paid": zod.number().nullish(),
+  "price_paid_input_type": zod.string().nullish(),
+  "price_paid_percent": zod.number().nullish(),
+  "sale_price_source": zod.string().nullish(),
+  "sale_price_rule": zod.string().nullish(),
+  "market_price_at_add": zod.number().nullish(),
+  "added_at": zod.string(),
+  "updated_at": zod.string()
 }))
 })
 
@@ -111,6 +158,11 @@ export const GetCollectionItemParams = zod.object({
 
 export const GetCollectionItemResponse = zod.object({
   "id": zod.number(),
+  "collection_id": zod.number(),
+  "sku": zod.string().nullish(),
+  "barcode": zod.string().nullish(),
+  "vendor_brand": zod.string().nullish(),
+  "product_category": zod.string().nullish(),
   "card_id": zod.number(),
   "card_name": zod.string(),
   "set_name": zod.string().nullish(),
@@ -122,7 +174,14 @@ export const GetCollectionItemResponse = zod.object({
   "image_url": zod.string().nullish(),
   "quantity": zod.number(),
   "notes": zod.string().nullish(),
-  "added_at": zod.string()
+  "price_paid": zod.number().nullish(),
+  "price_paid_input_type": zod.string().nullish(),
+  "price_paid_percent": zod.number().nullish(),
+  "sale_price_source": zod.string().nullish(),
+  "sale_price_rule": zod.string().nullish(),
+  "market_price_at_add": zod.number().nullish(),
+  "added_at": zod.string(),
+  "updated_at": zod.string()
 })
 
 
@@ -134,13 +193,36 @@ export const UpdateCollectionItemParams = zod.object({
 })
 
 export const UpdateCollectionItemBody = zod.object({
+  "collection_id": zod.number().optional(),
+  "sku": zod.string().nullish(),
+  "barcode": zod.string().nullish(),
+  "vendor_brand": zod.string().nullish(),
+  "product_category": zod.string().nullish(),
+  "card_name": zod.string().optional(),
+  "set_name": zod.string().nullish(),
+  "game_name": zod.string().nullish(),
+  "rarity": zod.string().nullish(),
+  "printing": zod.string().optional(),
+  "low_price": zod.number().nullish(),
+  "image_url": zod.string().nullish(),
   "quantity": zod.number().optional(),
   "notes": zod.string().nullish(),
-  "market_price": zod.number().nullish()
+  "market_price": zod.number().nullish(),
+  "price_paid": zod.number().nullish(),
+  "price_paid_input_type": zod.string().nullish(),
+  "price_paid_percent": zod.number().nullish(),
+  "sale_price_source": zod.string().nullish(),
+  "sale_price_rule": zod.string().nullish(),
+  "market_price_at_add": zod.number().nullish()
 })
 
 export const UpdateCollectionItemResponse = zod.object({
   "id": zod.number(),
+  "collection_id": zod.number(),
+  "sku": zod.string().nullish(),
+  "barcode": zod.string().nullish(),
+  "vendor_brand": zod.string().nullish(),
+  "product_category": zod.string().nullish(),
   "card_id": zod.number(),
   "card_name": zod.string(),
   "set_name": zod.string().nullish(),
@@ -152,7 +234,14 @@ export const UpdateCollectionItemResponse = zod.object({
   "image_url": zod.string().nullish(),
   "quantity": zod.number(),
   "notes": zod.string().nullish(),
-  "added_at": zod.string()
+  "price_paid": zod.number().nullish(),
+  "price_paid_input_type": zod.string().nullish(),
+  "price_paid_percent": zod.number().nullish(),
+  "sale_price_source": zod.string().nullish(),
+  "sale_price_rule": zod.string().nullish(),
+  "market_price_at_add": zod.number().nullish(),
+  "added_at": zod.string(),
+  "updated_at": zod.string()
 })
 
 

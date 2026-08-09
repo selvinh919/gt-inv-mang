@@ -8,6 +8,15 @@
 
 export interface CollectionItem {
   id: number;
+  collection_id: number;
+  /** @nullable */
+  sku?: string | null;
+  /** @nullable */
+  barcode?: string | null;
+  /** @nullable */
+  vendor_brand?: string | null;
+  /** @nullable */
+  product_category?: string | null;
   card_id: number;
   card_name: string;
   /** @nullable */
@@ -26,5 +35,18 @@ export interface CollectionItem {
   quantity: number;
   /** @nullable */
   notes?: string | null;
+  /** @nullable */
+  price_paid?: number | null;
+  /** @nullable */
+  price_paid_input_type?: string | null;
+  /** @nullable */
+  price_paid_percent?: number | null;
+  /** @nullable */
+  sale_price_source?: string | null;
+  /** @nullable */
+  sale_price_rule?: string | null;
+  /** @nullable */
+  market_price_at_add?: number | null;
   added_at: string;
+  updated_at: string;
 }

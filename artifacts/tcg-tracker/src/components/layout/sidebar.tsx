@@ -1,13 +1,24 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Search, Layers, Library } from "lucide-react";
+import { LayoutDashboard, Search, Layers, Library, ShoppingCart, Settings, ScrollText } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useBusinessStore } from "@/lib/business-store";
+import { buildAuthApiUrl, clearStoredAuthToken } from "@/lib/auth-session";
+
+function clearRemoteSession(): void {
+  void fetch(buildAuthApiUrl("/logout"), { method: "POST" }).catch(() => undefined);
+}
 
 export function Sidebar() {
   const [location] = useLocation();
+  const { session, signOut } = useBusinessStore();
 
   const links = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/collection", label: "My Collection", icon: Layers },
-    { href: "/search", label: "Add Cards", icon: Search },
+    { href: "/collection", label: "Inventory", icon: Layers },
+    { href: "/search", label: "Add Product", icon: Search },
+    { href: "/pos", label: "POS", icon: ShoppingCart },
+    { href: "/audit", label: "Audit", icon: ScrollText },
+    { href: "/settings", label: "Settings", icon: Settings },
   ];
 
   return (
@@ -39,8 +50,22 @@ export function Sidebar() {
         })}
       </nav>
       
-      <div className="p-6 text-xs text-muted-foreground">
-        Personal TCG Tracker
+      <div className="p-6 text-xs text-muted-foreground space-y-3">
+        <div>
+          <div className="font-semibold text-foreground">{session?.name}</div>
+          <div className="uppercase tracking-wide">{session?.role}</div>
+        </div>
+        <Button
+          variant="outline"
+          className="w-full"
+          onClick={() => {
+            signOut();
+            clearStoredAuthToken();
+            clearRemoteSession();
+          }}
+        >
+          Sign Out
+        </Button>
       </div>
     </div>
   );
