@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, numeric, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, bigint, numeric, timestamp, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -12,7 +12,7 @@ export const collectionItems = pgTable("collection_items", {
   barcode: text("barcode"),
   vendor_brand: text("vendor_brand"),
   product_category: text("product_category"),
-  card_id: integer("card_id").notNull(),
+  card_id: bigint("card_id", { mode: "number" }).notNull(),
   card_name: text("card_name").notNull(),
   set_name: text("set_name"),
   game_name: text("game_name"),

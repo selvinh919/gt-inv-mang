@@ -2,6 +2,7 @@ import pg from "pg";
 import { setCors, verifySessionToken } from "./auth.js";
 
 const poolSymbol = Symbol.for("cardsync.collection.pg.pool");
+const schemaReadySymbol = Symbol.for("cardsync.collection.pg.schema-ready");
 const globalStore = globalThis;
 
 function getConnectionString() {
@@ -17,6 +18,39 @@ function getPool() {
     globalStore[poolSymbol] = new pg.Pool({ connectionString: getConnectionString() });
   }
   return globalStore[poolSymbol];
+}
+
+export async function ensureCollectionSchema() {
+  if (!globalStore[schemaReadySymbol]) {
+    const pool = getPool();
+    globalStore[schemaReadySymbol] = (async () => {
+      const column = await pool.query(
+        `select data_type
+           from information_schema.columns
+          where table_schema = current_schema()
+            and table_name = 'collection_items'
+            and column_name = 'card_id'
+          limit 1`,
+      );
+
+      if (column.rowCount === 0) {
+        throw new Error("collection_items.card_id is missing; run the database migrations");
+      }
+
+      if (column.rows[0].data_type !== "bigint") {
+        await pool.query(
+          `alter table collection_items
+             alter column card_id type bigint using card_id::bigint`,
+        );
+        console.info("[inventory] migrated collection_items.card_id to bigint");
+      }
+    })().catch((error) => {
+      delete globalStore[schemaReadySymbol];
+      throw error;
+    });
+  }
+
+  await globalStore[schemaReadySymbol];
 }
 
 function parseBearerToken(req) {
@@ -99,8 +133,8 @@ export function serializeItem(row) {
 export function normalizeCreatePayload(body) {
   const cardId = Number(body?.card_id);
   const cardName = String(body?.card_name || "").trim();
-  if (!Number.isInteger(cardId) || cardId <= 0 || !cardName) {
-    return { error: "card_id and card_name are required" };
+  if (!Number.isSafeInteger(cardId) || cardId <= 0 || !cardName) {
+    return { error: "card_id must be a positive safe integer and card_name is required" };
   }
 
   return {
@@ -183,6 +217,7 @@ export function normalizeUpdatePayload(body) {
 }
 
 export async function queryItems(scope, collectionId) {
+  await ensureCollectionSchema();
   const pool = getPool();
   const params = [scope.tenantId, scope.organizationId, scope.locationId];
   let filter = "";
@@ -202,6 +237,7 @@ export async function queryItems(scope, collectionId) {
 }
 
 export async function insertItem(scope, payload) {
+  await ensureCollectionSchema();
   const pool = getPool();
   const result = await pool.query(
     `insert into collection_items (
@@ -252,6 +288,7 @@ export async function insertItem(scope, payload) {
 }
 
 export async function findItemById(scope, id) {
+  await ensureCollectionSchema();
   const pool = getPool();
   const result = await pool.query(
     `select * from collection_items
@@ -264,6 +301,7 @@ export async function findItemById(scope, id) {
 }
 
 export async function updateItemById(scope, id, updates) {
+  await ensureCollectionSchema();
   const keys = Object.keys(updates);
   if (keys.length === 0) {
     return await findItemById(scope, id);
@@ -289,6 +327,7 @@ export async function updateItemById(scope, id, updates) {
 }
 
 export async function deleteItemById(scope, id) {
+  await ensureCollectionSchema();
   const pool = getPool();
   const result = await pool.query(
     `delete from collection_items
