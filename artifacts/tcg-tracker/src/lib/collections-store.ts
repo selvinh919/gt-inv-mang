@@ -143,6 +143,13 @@ type UpdateItemInput = {
 const STORAGE_KEY = "cardsync.collections.v1";
 const LEGACY_STORAGE_KEY = "cardsync.collections.v1";
 const BUSINESS_STORAGE_KEY = "cardsync.business.v1";
+const DELETE_QUEUE_STORAGE_KEY = "cardsync.inventory-delete-queue.v1";
+
+type PendingRemoteDelete = {
+  remoteId: number | null;
+  fingerprint: string;
+  deletedAt: string;
+};
 
 const listeners = new Set<() => void>();
 let currentState: StoreState | null = null;
@@ -198,6 +205,84 @@ function getRemoteCollectionApiBase(): string {
 
 function itemFingerprint(item: Pick<CollectionCardItem, "collection_id" | "sku" | "card_id" | "printing">): string {
   return `${item.collection_id}::${item.sku}::${item.card_id}::${item.printing}`;
+}
+
+function deleteQueueStorageKey(): string {
+  return `${DELETE_QUEUE_STORAGE_KEY}:${getActiveBusinessUserId() ?? "guest"}`;
+}
+
+function loadPendingRemoteDeletes(): PendingRemoteDelete[] {
+  if (!isBrowser()) return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(deleteQueueStorageKey()) || "[]");
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((entry): entry is PendingRemoteDelete =>
+      entry && typeof entry.fingerprint === "string" && entry.fingerprint.length > 0,
+    );
+  } catch {
+    return [];
+  }
+}
+
+function savePendingRemoteDeletes(entries: PendingRemoteDelete[]): void {
+  if (!isBrowser()) return;
+  window.localStorage.setItem(deleteQueueStorageKey(), JSON.stringify(entries));
+}
+
+function queueRemoteDelete(item: CollectionCardItem): void {
+  const fingerprint = itemFingerprint(item);
+  const existing = loadPendingRemoteDeletes();
+  const remoteId = Number(item.remote_id || 0);
+  const next: PendingRemoteDelete = {
+    remoteId: Number.isInteger(remoteId) && remoteId > 0 ? remoteId : null,
+    fingerprint,
+    deletedAt: nowIso(),
+  };
+  savePendingRemoteDeletes([
+    next,
+    ...existing.filter((entry) => entry.fingerprint !== fingerprint),
+  ]);
+}
+
+function clearPendingRemoteDelete(entry: PendingRemoteDelete): void {
+  savePendingRemoteDeletes(loadPendingRemoteDeletes().filter((candidate) =>
+    candidate.fingerprint !== entry.fingerprint,
+  ));
+}
+
+async function deleteRemoteItemById(remoteId: number): Promise<void> {
+  const token = getAuthToken();
+  if (!token || !remoteId) return;
+  const response = await fetch(`${getRemoteCollectionApiBase()}/${remoteId}`, {
+    method: "DELETE",
+    headers: { authorization: `Bearer ${token}` },
+  });
+  if (!response.ok && response.status !== 404) {
+    throw new Error(`Remote inventory delete failed: ${response.status}`);
+  }
+}
+
+async function flushPendingRemoteDeletes(remoteItems?: CollectionCardItem[]): Promise<void> {
+  if (!getAuthToken()) return;
+  const pending = loadPendingRemoteDeletes();
+  if (pending.length === 0) return;
+
+  const availableRemoteItems = remoteItems ?? await fetchRemoteItems() ?? [];
+  for (const entry of pending) {
+    const matchingRemote = availableRemoteItems.find((item) =>
+      (entry.remoteId != null && Number(item.id) === entry.remoteId) ||
+      itemFingerprint(item) === entry.fingerprint,
+    );
+    const remoteId = entry.remoteId ?? (matchingRemote ? Number(matchingRemote.id) : null);
+
+    if (!remoteId) {
+      clearPendingRemoteDelete(entry);
+      continue;
+    }
+
+    await deleteRemoteItemById(remoteId);
+    clearPendingRemoteDelete(entry);
+  }
 }
 
 function mapRemoteItemToLocal(remote: any): CollectionCardItem {
@@ -366,20 +451,8 @@ async function syncRemoteUpsertItem(item: CollectionCardItem): Promise<number | 
 
 async function syncRemoteDeleteItem(item: CollectionCardItem | null): Promise<void> {
   if (!item) return;
-  const token = getAuthToken();
-  const remoteId = Number(item.remote_id || item.id || 0);
-  if (!token || !remoteId) return;
-
-  const response = await fetch(`${getRemoteCollectionApiBase()}/${remoteId}`, {
-    method: "DELETE",
-    headers: {
-      authorization: `Bearer ${token}`,
-    },
-  });
-
-  if (!response.ok && response.status !== 404) {
-    throw new Error(`Remote inventory delete failed: ${response.status}`);
-  }
+  queueRemoteDelete(item);
+  await flushPendingRemoteDeletes();
 }
 
 function attachRemoteIdToLocalItem(localItemId: number, remoteId: number): void {
@@ -410,8 +483,21 @@ async function hydrateRemoteIntoStore(force = false): Promise<void> {
   remoteHydrationInFlight = true;
   setRemoteSyncState({ status: "syncing", error: null, lastSyncedAt: remoteSyncState.lastSyncedAt });
   try {
-    const remoteItems = await fetchRemoteItems();
-    if (!remoteItems) return;
+    const fetchedRemoteItems = await fetchRemoteItems();
+    if (!fetchedRemoteItems) return;
+
+    const pendingDeletesAtFetch = loadPendingRemoteDeletes();
+    try {
+      await flushPendingRemoteDeletes(fetchedRemoteItems);
+    } catch (error) {
+      console.warn("Remote inventory delete retry failed", error);
+    }
+
+    const pendingDeletes = [...pendingDeletesAtFetch, ...loadPendingRemoteDeletes()];
+    const remoteItems = fetchedRemoteItems.filter((item) => !pendingDeletes.some((entry) =>
+      (entry.remoteId != null && Number(item.id) === entry.remoteId) ||
+      itemFingerprint(item) === entry.fingerprint,
+    ));
 
     const state = getSnapshot();
     const remoteIds = new Set(
@@ -763,7 +849,9 @@ function deleteCollection(collectionId: number) {
   if (state.collections.length <= 1) return;
 
   const collections = state.collections.filter((c) => c.id !== collectionId);
+  const removedItems = state.items.filter((item) => item.collection_id === collectionId);
   const items = state.items.filter((item) => item.collection_id !== collectionId);
+  removedItems.forEach(queueRemoteDelete);
   const next = ensureActiveCollection({ ...state, collections, items });
   saveState(withAudit(next, {
     action: "collection.delete",
@@ -771,6 +859,9 @@ function deleteCollection(collectionId: number) {
     entityId: String(collectionId),
     metadata: { removed_item_count: state.items.length - items.length },
   }));
+  void flushPendingRemoteDeletes().catch((error) => {
+    console.warn("Remote inventory collection delete failed", error);
+  });
 }
 
 function addItem(input: AddItemInput): CollectionCardItem {
@@ -950,13 +1041,14 @@ function removeItem(id: number) {
   const state = getSnapshot();
   const existing = state.items.find((item) => item.id === id);
   const nextItems = state.items.filter((item) => item.id !== id);
+  if (existing) queueRemoteDelete(existing);
   saveState(withAudit({ ...state, items: nextItems }, {
     action: "collection_item.delete",
     entityType: "collection_item",
     entityId: String(id),
     before: existing ?? null,
   }));
-  void syncRemoteDeleteItem(existing ?? null).catch((error) => {
+  void flushPendingRemoteDeletes().catch((error) => {
     console.warn("Remote inventory delete failed", error);
   });
 }
@@ -1054,6 +1146,22 @@ function checkoutSale(
     entityId: String(sale.id),
     after: sale,
   }));
+
+  for (const line of saleLines) {
+    const before = state.items.find((item) => item.id === line.item_id);
+    const after = nextItems.find((item) => item.id === line.item_id);
+    if (!before) continue;
+    if (!after) {
+      queueRemoteDelete(before);
+      continue;
+    }
+    void syncRemoteUpsertItem(after).catch((error) => {
+      console.warn("Remote inventory checkout sync failed", error);
+    });
+  }
+  void flushPendingRemoteDeletes().catch((error) => {
+    console.warn("Remote inventory checkout delete failed", error);
+  });
 
   return sale;
 }
