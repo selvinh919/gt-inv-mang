@@ -8,6 +8,10 @@
     {
       "source": "/api/pos/:path*",
       "destination": "/api/pos"
+    },
+    {
+      "source": "/api/payments/:path*",
+      "destination": "/api/payments"
     }
   ],
   "headers": [
