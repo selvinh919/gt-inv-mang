@@ -308,9 +308,9 @@ export default function PosPage() {
     }
   };
 
-  const addCustomer = () => {
+  const addCustomer = async () => {
     try {
-      const customer = createCustomer({
+      const customer = await createCustomer({
         name: newCustomerName,
         email: newCustomerEmail,
         phone: newCustomerPhone,
@@ -709,7 +709,7 @@ export default function PosPage() {
                 <Input value={newCustomerEmail} onChange={(e) => setNewCustomerEmail(e.target.value)} placeholder="Email (optional)" />
                 <Input value={newCustomerPhone} onChange={(e) => setNewCustomerPhone(e.target.value)} placeholder="Phone (optional)" />
               </div>
-              <Button onClick={addCustomer}>Add Customer</Button>
+                <Button onClick={() => void addCustomer()}>Add Customer</Button>
 
               <div className="space-y-2 max-h-52 overflow-auto">
                 {customers.map((customer) => (

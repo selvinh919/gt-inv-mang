@@ -505,37 +505,25 @@ function setTaxConfig(ratePercent: number): void {
     .catch((error) => console.warn("Server tax update failed", error));
 }
 
-function createCustomer(input: {
+async function createCustomer(input: {
   name: string;
   email?: string | null;
   phone?: string | null;
   tax_exempt?: boolean;
   notes?: string | null;
-}): CustomerProfile {
+}): Promise<CustomerProfile> {
   ensureRole(["owner", "manager", "clerk"]);
   const state = getSnapshot();
   const name = input.name.trim();
   if (!name) throw new Error("Customer name is required");
 
-  const customer: CustomerProfile = {
-    id: state.nextCustomerId,
-    name,
-    email: input.email?.trim() || null,
-    phone: input.phone?.trim() || null,
-    tax_exempt: Boolean(input.tax_exempt),
-    notes: input.notes?.trim() || null,
-    created_at: nowIso(),
-  };
+  const customer = await posRequest("customers", { method: "POST", body: JSON.stringify(input) }) as CustomerProfile;
 
   saveState({
     ...state,
-    nextCustomerId: state.nextCustomerId + 1,
+    nextCustomerId: Math.max(state.nextCustomerId, Number(customer.id) + 1),
     customers: [customer, ...state.customers],
   });
-  void posRequest("customers", { method: "POST", body: JSON.stringify(input) })
-    .then(() => hydrateBusinessState(true))
-    .catch((error) => console.warn("Server customer creation failed", error));
-
   return customer;
 }
 
