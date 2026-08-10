@@ -1166,6 +1166,25 @@ function checkoutSale(
   return sale;
 }
 
+function applyServerSale(sale: SaleRecord): void {
+  const state = getSnapshot();
+  if (state.sales.some((existing) => existing.id === sale.id)) return;
+  const sold = new Map(sale.lines.map((line) => [line.item_id, line.quantity]));
+  const items = state.items.flatMap((item) => {
+    const quantity = sold.get(item.id);
+    if (!quantity) return [item];
+    const remaining = item.quantity - quantity;
+    return remaining > 0 ? [{ ...item, quantity: remaining, updated_at: nowIso() }] : [];
+  });
+  saveState(withAudit({ ...state, items, sales: [sale, ...state.sales] }, {
+    action: "sale.create",
+    entityType: "sale",
+    entityId: String(sale.id),
+    after: sale,
+    metadata: { source: "server" },
+  }));
+}
+
 function getCollectionItems(state: StoreState, collectionId: number) {
   return state.items
     .filter((item) => item.collection_id === collectionId)
@@ -1295,5 +1314,7 @@ export function useCollectionsStore() {
     updateItem,
     removeItem,
     checkoutSale,
+    applyServerSale,
+    refreshRemote: () => hydrateRemoteIntoStore(true),
   };
 }

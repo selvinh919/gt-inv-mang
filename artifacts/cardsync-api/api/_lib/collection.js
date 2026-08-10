@@ -1,5 +1,6 @@
 import pg from "pg";
 import { setCors, verifySessionToken } from "./auth.js";
+import { ensureAccountScope } from "./local-auth.js";
 
 const poolSymbol = Symbol.for("cardsync.collection.pg.pool");
 const schemaReadySymbol = Symbol.for("cardsync.collection.pg.schema-ready");
@@ -76,18 +77,32 @@ export async function requireAuthContext(req, res) {
       return null;
     }
 
+    const email = String(payload.email || "").trim().toLowerCase();
+    const name = String(payload.name || email).trim() || email;
+    if (!email) {
+      res.status(401).json({ error: "JWT missing email" });
+      return null;
+    }
+    const membership = await ensureAccountScope({ subject: sub, email, name });
     return {
       userId: sub,
-      tenantId: String(payload.tenant_id || "public").trim() || "public",
-      organizationId: String(payload.organization_id || "default").trim() || "default",
-      locationId: String(payload.location_id || "main").trim() || "main",
-      email: String(payload.email || "").trim().toLowerCase() || null,
-      name: String(payload.name || "").trim() || null,
+      tenantId: membership.tenantId,
+      organizationId: membership.organizationId,
+      locationId: membership.locationId,
+      email,
+      name,
+      roles: userRoleToRoles(membership.role),
     };
   } catch {
     res.status(401).json({ error: "Invalid or expired token" });
     return null;
   }
+}
+
+function userRoleToRoles(role) {
+  if (role === "owner") return ["OWNER"];
+  if (role === "manager") return ["MANAGER"];
+  return ["CASHIER"];
 }
 
 export function parsePathId(req) {

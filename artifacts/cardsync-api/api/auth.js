@@ -4,7 +4,8 @@ import {
   findUserByEmail,
   migrateLocalUsers,
   registerLocalUser,
-  resetLocalPassword,
+  changeLocalPassword,
+  ensureAccountScope,
   userRoleToJwtRoles,
 } from "./_lib/local-auth.js";
 import {
@@ -18,13 +19,6 @@ import {
   requireAuthContext,
   updateItemById,
 } from "./_lib/collection.js";
-
-const ADMIN_EMAILS = new Set(
-  String(process.env.AUTH_ADMIN_EMAILS || "")
-    .split(",")
-    .map((item) => item.trim().toLowerCase())
-    .filter(Boolean),
-);
 
 function withParam(url, key, value) {
   const next = new URL(url);
@@ -73,16 +67,20 @@ function parseJsonBody(req) {
 }
 
 async function signLocalSession(user) {
-  const role = normalizeRole(user.role);
+  const subject = `local|${user.id}`;
+  const scope = await ensureAccountScope({ subject, email: user.email, name: user.name });
+  const role = normalizeRole(scope.role);
   const token = await signSessionToken({
-    sub: `local|${user.id}`,
+    sub: subject,
     email: String(user.email || "").trim().toLowerCase(),
     name: String(user.name || user.email || "").trim() || String(user.email || "").trim().toLowerCase(),
     picture: null,
     provider: "local",
-    tenant_id: "public",
-    organization_id: "default",
-    location_id: "main",
+    tenant_id: scope.tenantId,
+    organization_id: scope.organizationId,
+    location_id: scope.locationId,
+    store_id: scope.storeId,
+    store_name: scope.storeName,
     roles: userRoleToJwtRoles(role),
     permissions: [],
   });
@@ -97,6 +95,24 @@ async function signLocalSession(user) {
       provider: "local",
     },
   };
+}
+
+async function signExternalSession({ subject, email, name, picture, provider }) {
+  const scope = await ensureAccountScope({ subject, email, name });
+  return signSessionToken({
+    sub: subject,
+    email,
+    name,
+    picture,
+    provider,
+    tenant_id: scope.tenantId,
+    organization_id: scope.organizationId,
+    location_id: scope.locationId,
+    store_id: scope.storeId,
+    store_name: scope.storeName,
+    roles: userRoleToJwtRoles(scope.role),
+    permissions: [],
+  });
 }
 
 async function startGoogle(req, res) {
@@ -211,18 +227,7 @@ async function callbackGoogle(req, res) {
       throw new Error("Google profile missing required fields");
     }
 
-    const token = await signSessionToken({
-      sub: `google|${id}`,
-      email,
-      name,
-      picture,
-      provider: "google",
-      tenant_id: "public",
-      organization_id: "default",
-      location_id: "main",
-      roles: ADMIN_EMAILS.has(email) ? ["OWNER"] : ["CASHIER"],
-      permissions: [],
-    });
+    const token = await signExternalSession({ subject: `google|${id}`, email, name, picture, provider: "google" });
 
     res.redirect(withParam(ctx.redirectUrl, "auth_token", token));
   } catch {
@@ -290,18 +295,7 @@ async function callbackDiscord(req, res) {
       throw new Error("Discord profile missing required fields");
     }
 
-    const token = await signSessionToken({
-      sub: `discord|${id}`,
-      email,
-      name,
-      picture,
-      provider: "discord",
-      tenant_id: "public",
-      organization_id: "default",
-      location_id: "main",
-      roles: ADMIN_EMAILS.has(email) ? ["OWNER"] : ["CASHIER"],
-      permissions: [],
-    });
+    const token = await signExternalSession({ subject: `discord|${id}`, email, name, picture, provider: "discord" });
 
     res.redirect(withParam(ctx.redirectUrl, "auth_token", token));
   } catch {
@@ -323,12 +317,13 @@ async function me(req, res) {
     const name = String(payload.name || email).trim() || email;
     const picture = payload.picture ? String(payload.picture) : null;
     const provider = payload.provider ? String(payload.provider) : null;
-    const roles = Array.isArray(payload.roles) ? payload.roles.map((item) => String(item)) : [];
 
     if (!sub || !email) {
       res.status(401).json({ error: "Token is missing required profile fields" });
       return;
     }
+
+    const scope = await ensureAccountScope({ subject: sub, email, name });
 
     res.status(200).json({
       sub,
@@ -336,7 +331,9 @@ async function me(req, res) {
       name,
       picture,
       provider,
-      role: roles[0] || "CASHIER",
+      role: userRoleToJwtRoles(scope.role)[0],
+      storeId: scope.storeId,
+      storeName: scope.storeName,
     });
   } catch {
     res.status(401).json({ error: "Invalid or expired token" });
@@ -371,7 +368,7 @@ async function localRegister(req, res) {
       return;
     }
 
-    const role = ADMIN_EMAILS.has(email) ? "owner" : "clerk";
+    const role = "owner";
     const user = await registerLocalUser({ name, email, password, role, externalSub: null });
     const session = await signLocalSession(user);
     res.status(201).json(session);
@@ -408,18 +405,37 @@ async function localLogin(req, res) {
   }
 }
 
-async function localReset(req, res) {
+async function localChangePassword(req, res) {
   const body = parseJsonBody(req);
   if (!body) {
     res.status(400).json({ error: "Invalid JSON body" });
     return;
   }
 
-  const email = String(body.email || "").trim().toLowerCase();
+  const token = parseBearerToken(req);
+  if (!token) {
+    res.status(401).json({ error: "Authentication required" });
+    return;
+  }
+
+  let payload;
+  try {
+    payload = await verifySessionToken(token);
+  } catch {
+    res.status(401).json({ error: "Invalid or expired token" });
+    return;
+  }
+  if (String(payload.provider || "") !== "local") {
+    res.status(400).json({ error: "Password changes are only available for email accounts" });
+    return;
+  }
+
+  const email = String(payload.email || "").trim().toLowerCase();
+  const currentPassword = String(body.currentPassword || "").trim();
   const newPassword = String(body.password || body.newPassword || "").trim();
 
-  if (!email || !newPassword) {
-    res.status(400).json({ error: "Email and password are required" });
+  if (!email || !currentPassword || !newPassword) {
+    res.status(400).json({ error: "Current and new passwords are required" });
     return;
   }
 
@@ -429,16 +445,16 @@ async function localReset(req, res) {
   }
 
   try {
-    const user = await resetLocalPassword(email, newPassword);
+    const user = await changeLocalPassword(email, currentPassword, newPassword);
     if (!user) {
-      res.status(404).json({ error: "No account found for this email" });
+      res.status(401).json({ error: "Current password is incorrect" });
       return;
     }
 
     const session = await signLocalSession(user);
     res.status(200).json(session);
   } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : "Could not reset password" });
+    res.status(500).json({ error: error instanceof Error ? error.message : "Could not change password" });
   }
 }
 
@@ -601,8 +617,13 @@ export default async function handler(req, res) {
     return;
   }
 
+  if (section === "local" && provider === "change-password" && req.method === "POST") {
+    await localChangePassword(req, res);
+    return;
+  }
+
   if (section === "local" && provider === "reset" && req.method === "POST") {
-    await localReset(req, res);
+    res.status(410).json({ error: "Password reset by email is not configured. Contact your store owner." });
     return;
   }
 

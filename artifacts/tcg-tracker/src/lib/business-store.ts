@@ -1,5 +1,6 @@
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import type { CollectionCardItem, SaleRecord } from "@/lib/collections-store";
+import { getApiBaseUrl, getStoredAuthToken } from "@/lib/auth-session";
 
 export type UserRole = "owner" | "manager" | "clerk";
 export type PaymentStatus = "paid" | "unpaid" | "partial" | "refunded";
@@ -100,6 +101,7 @@ const STORAGE_KEY = "cardsync.business.v1";
 
 const listeners = new Set<() => void>();
 let currentState: BusinessState | null = null;
+let lastServerSyncAt = 0;
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -187,6 +189,41 @@ function getSnapshot(): BusinessState {
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
+}
+
+async function posRequest(path: string, init?: RequestInit): Promise<unknown> {
+  const token = getStoredAuthToken();
+  if (!token) throw new Error("Authentication required");
+  const response = await fetch(`${getApiBaseUrl()}/api/pos/${path}`, {
+    ...init,
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}`, ...(init?.headers || {}) },
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(typeof payload?.error === "string" ? payload.error : "Server request failed");
+  return payload;
+}
+
+async function hydrateBusinessState(force = false): Promise<void> {
+  if (!getStoredAuthToken() || (!force && Date.now() - lastServerSyncAt < 30_000)) return;
+  const [customers, settings, sales] = await Promise.all([
+    posRequest("customers"), posRequest("settings"), posRequest("sales"),
+  ]);
+  const state = getSnapshot();
+  const serverSales = Array.isArray(sales) ? sales : [];
+  const receipts: ReceiptRecord[] = serverSales.map((sale: any) => ({
+    id: Number(sale.id), sale_id: Number(sale.id), receipt_number: String(sale.receipt_number),
+    customer_id: sale.customer_id == null ? null : Number(sale.customer_id), customer_name: null,
+    payment_status: sale.payment_status as PaymentStatus, subtotal: Number(sale.subtotal), tax: Number(sale.tax),
+    total: Number(sale.total), amount_paid: Number(sale.amount_paid), balance_due: Math.max(0, Number(sale.total) - Number(sale.amount_paid)),
+    issued_at: String(sale.created_at),
+  }));
+  lastServerSyncAt = Date.now();
+  saveState({
+    ...state,
+    customers: Array.isArray(customers) ? customers as CustomerProfile[] : state.customers,
+    tax: { rate_percent: Number((settings as any)?.tax_rate ?? state.tax.rate_percent) },
+    receipts,
+  });
 }
 
 function requireSession(): AuthSession {
@@ -311,6 +348,7 @@ function signInFromExternal(input: {
   name: string;
   external_sub?: string | null;
   adminEmails?: string[];
+  role?: UserRole;
 }): AuthSession {
   const state = getSnapshot();
   const email = input.email.trim().toLowerCase();
@@ -318,7 +356,7 @@ function signInFromExternal(input: {
   if (!email) throw new Error("Email is required");
 
   const adminEmails = (input.adminEmails || []).map((item) => item.trim().toLowerCase()).filter(Boolean);
-  const defaultRole: UserRole = adminEmails.includes(email) ? "owner" : "clerk";
+  const defaultRole: UserRole = input.role ?? (adminEmails.includes(email) ? "owner" : "clerk");
 
   const existing = state.users.find((user) => user.email.toLowerCase() === email);
 
@@ -344,7 +382,7 @@ function signInFromExternal(input: {
           ...candidate,
           name,
           external_sub: input.external_sub ?? candidate.external_sub ?? null,
-          role: adminEmails.includes(email) ? "owner" : candidate.role,
+          role: input.role ?? (adminEmails.includes(email) ? "owner" : candidate.role),
         };
       })
     : [user, ...state.users];
@@ -463,36 +501,29 @@ function setTaxConfig(ratePercent: number): void {
     ...state,
     tax: { rate_percent: money(ratePercent) },
   });
+  void posRequest("settings", { method: "PATCH", body: JSON.stringify({ tax_rate: ratePercent }) })
+    .catch((error) => console.warn("Server tax update failed", error));
 }
 
-function createCustomer(input: {
+async function createCustomer(input: {
   name: string;
   email?: string | null;
   phone?: string | null;
   tax_exempt?: boolean;
   notes?: string | null;
-}): CustomerProfile {
+}): Promise<CustomerProfile> {
   ensureRole(["owner", "manager", "clerk"]);
   const state = getSnapshot();
   const name = input.name.trim();
   if (!name) throw new Error("Customer name is required");
 
-  const customer: CustomerProfile = {
-    id: state.nextCustomerId,
-    name,
-    email: input.email?.trim() || null,
-    phone: input.phone?.trim() || null,
-    tax_exempt: Boolean(input.tax_exempt),
-    notes: input.notes?.trim() || null,
-    created_at: nowIso(),
-  };
+  const customer = await posRequest("customers", { method: "POST", body: JSON.stringify(input) }) as CustomerProfile;
 
   saveState({
     ...state,
-    nextCustomerId: state.nextCustomerId + 1,
+    nextCustomerId: Math.max(state.nextCustomerId, Number(customer.id) + 1),
     customers: [customer, ...state.customers],
   });
-
   return customer;
 }
 
@@ -685,6 +716,10 @@ function receivePurchaseOrder(
 export function useBusinessStore() {
   const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
+  useEffect(() => {
+    void hydrateBusinessState().catch((error) => console.warn("Server business sync failed", error));
+  }, []);
+
   return {
     state,
     session: state.session,
@@ -705,6 +740,7 @@ export function useBusinessStore() {
     issueReceipt,
     createPurchaseOrder,
     receivePurchaseOrder,
+    refreshBusiness: () => hydrateBusinessState(true),
     can(permission: "manage_users" | "manage_tax" | "manage_po" | "checkout") {
       const role = state.session?.role;
       if (!role) return false;

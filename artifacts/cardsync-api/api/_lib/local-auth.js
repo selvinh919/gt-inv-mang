@@ -1,5 +1,5 @@
 import pg from "pg";
-import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
+import { randomBytes, randomUUID, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 
 const scrypt = promisify(scryptCallback);
@@ -95,10 +95,106 @@ export async function ensureAuthUsersTable() {
       );
       create index if not exists auth_users_role_idx on auth_users (role);
       create index if not exists auth_users_active_idx on auth_users (active);
+      create table if not exists stores (
+        id uuid primary key,
+        name text not null,
+        created_by_subject text not null,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now()
+      );
+      create table if not exists store_memberships (
+        store_id uuid not null references stores(id) on delete cascade,
+        user_subject text not null,
+        email text not null,
+        role text not null default 'owner',
+        active boolean not null default true,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now(),
+        primary key (store_id, user_subject),
+        unique (user_subject)
+      );
+      create index if not exists store_memberships_email_idx on store_memberships (lower(email));
     `);
   }
 
   await globalStore[readySymbol];
+}
+
+export async function ensureAccountScope({ subject, email, name }) {
+  await ensureAuthUsersTable();
+  const normalizedSubject = String(subject || "").trim();
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  if (!normalizedSubject || !normalizedEmail) throw new Error("Account identity is incomplete");
+
+  const pool = getPool();
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    await client.query("select pg_advisory_xact_lock(hashtext('cardsync-account-scope'))");
+    const existing = await client.query(
+      `select m.store_id, m.role, s.name
+         from store_memberships m
+         join stores s on s.id = m.store_id
+        where m.user_subject = $1 and m.active = true
+        limit 1`,
+      [normalizedSubject],
+    );
+    if (existing.rowCount > 0) {
+      await client.query("commit");
+      const membership = existing.rows[0];
+      return {
+        tenantId: `store:${membership.store_id}`,
+        organizationId: "main",
+        locationId: "main",
+        role: normalizeRole(membership.role),
+        storeId: membership.store_id,
+        storeName: membership.name,
+      };
+    }
+
+    const membershipCount = await client.query(`select count(*)::int as count from store_memberships`);
+    const isFirstStore = Number(membershipCount.rows[0]?.count || 0) === 0;
+    const storeId = randomUUID();
+    const storeName = `${String(name || normalizedEmail).trim() || normalizedEmail}'s store`;
+    await client.query(
+      `insert into stores (id, name, created_by_subject) values ($1, $2, $3)`,
+      [storeId, storeName, normalizedSubject],
+    );
+    await client.query(
+      `insert into store_memberships (store_id, user_subject, email, role)
+       values ($1, $2, $3, 'owner')`,
+      [storeId, normalizedSubject, normalizedEmail],
+    );
+
+    // Preserve the existing production inventory exactly once. Before stores existed,
+    // every account used this shared legacy scope; the first account to sign in claims it.
+    if (isFirstStore) {
+      const table = await client.query(`select to_regclass('collection_items') as name`);
+      if (table.rows[0]?.name) {
+        await client.query(
+          `update collection_items
+              set tenant_id = $1, organization_id = 'main', location_id = 'main'
+            where tenant_id = 'public' and organization_id = 'default' and location_id = 'main'`,
+          [`store:${storeId}`],
+        );
+      }
+    }
+
+    await client.query("commit");
+    return {
+      tenantId: `store:${storeId}`,
+      organizationId: "main",
+      locationId: "main",
+      role: "owner",
+      storeId,
+      storeName,
+    };
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function findUserByEmail(email) {
@@ -142,7 +238,9 @@ export async function registerLocalUser({ name, email, password, role, externalS
   return result.rows[0];
 }
 
-export async function resetLocalPassword(email, newPassword) {
+export async function changeLocalPassword(email, currentPassword, newPassword) {
+  const user = await authenticateLocalUser(email, currentPassword);
+  if (!user) return null;
   await ensureAuthUsersTable();
   const normalizedEmail = String(email || "").trim().toLowerCase();
   const passwordHash = await hashPassword(newPassword);

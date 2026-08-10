@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Minus, Plus, ShoppingCart, CreditCard, DollarSign, TrendingUp, Package } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { getStoredAuthToken } from "@/lib/auth-session";
 
 type CartLine = {
   item_id: number;
@@ -130,7 +131,8 @@ export default function PosPage() {
     activeItems,
     activeSales,
     posSummary,
-    checkoutSale,
+    applyServerSale,
+    refreshRemote,
     addItem,
   } = useCollectionsStore();
 
@@ -140,7 +142,7 @@ export default function PosPage() {
     receipts,
     purchaseOrders,
     createCustomer,
-    issueReceipt,
+    refreshBusiness,
     createPurchaseOrder,
     receivePurchaseOrder,
     can,
@@ -246,7 +248,7 @@ export default function PosPage() {
     });
   };
 
-  const runCheckout = () => {
+  const runCheckout = async () => {
     if (!can("checkout")) {
       toast({
         title: "Permission denied",
@@ -257,8 +259,6 @@ export default function PosPage() {
     }
 
     try {
-      const sale = checkoutSale(activeCollection.id, cartLines, notes || null);
-
       const parsedAmount = Number(amountPaidInput);
       const amountPaid = Number.isFinite(parsedAmount)
         ? Math.max(0, parsedAmount)
@@ -266,19 +266,38 @@ export default function PosPage() {
           ? checkoutTotal
           : 0;
 
-      const receipt = issueReceipt({
-        sale,
-        customer_id: selectedCustomer?.id ?? null,
-        payment_status: paymentStatus,
-        amount_paid: amountPaid,
+      const token = getStoredAuthToken();
+      if (!token) throw new Error("Your session expired. Sign in again.");
+      const response = await fetch(`${apiBaseUrl()}/api/pos/checkout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          collection_id: activeCollection.id,
+          lines: cartLines,
+          notes: notes || null,
+          customer_id: selectedCustomer?.id ?? null,
+          payment_status: paymentStatus,
+          amount_paid: amountPaid,
+          idempotency_key: makeIdempotencyKey(),
+        }),
       });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(typeof payload.error === "string" ? payload.error : "Checkout failed");
+      const sale = {
+        id: Number(payload.id), collection_id: Number(payload.collection_id), sold_at: String(payload.created_at),
+        notes: payload.notes ?? null, total_revenue: Number(payload.subtotal), total_cogs: Number(payload.total_cogs),
+        total_profit: Number(payload.total_profit), lines: payload.lines,
+      };
+      applyServerSale(sale);
+      await refreshRemote();
+      await refreshBusiness();
 
       setCart({});
       setNotes("");
       setAmountPaidInput("");
       toast({
         title: "Sale completed",
-        description: `Receipt ${receipt.receipt_number} created for ${money(receipt.total)}.`,
+        description: `Receipt ${String(payload.receipt_number)} created for ${money(Number(payload.total))}.`,
       });
     } catch (error) {
       toast({
@@ -289,9 +308,9 @@ export default function PosPage() {
     }
   };
 
-  const addCustomer = () => {
+  const addCustomer = async () => {
     try {
-      const customer = createCustomer({
+      const customer = await createCustomer({
         name: newCustomerName,
         email: newCustomerEmail,
         phone: newCustomerPhone,
@@ -402,32 +421,22 @@ export default function PosPage() {
     setStripeLoading(true);
     try {
       const idempotencyKey = makeIdempotencyKey();
-      const line_items = cartLines.map((line) => {
-        const item = activeItems.find((candidate) => candidate.id === line.item_id);
-        return {
-          quantity: line.quantity,
-          unit_price: line.unit_price,
-          name: item?.card_name || "Inventory Item",
-          description: [item?.set_name, item?.printing].filter(Boolean).join(" • "),
-        };
-      });
+      const token = getStoredAuthToken();
+      if (!token) throw new Error("Your session expired. Sign in again.");
 
       const response = await fetch(`${apiBaseUrl()}/api/payments/create-checkout-session`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Idempotency-Key": idempotencyKey,
+          authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           collection_id: activeCollection.id,
-          line_items,
-          tax_amount: taxAmount,
-          success_url: `${window.location.origin}/pos?stripe=success`,
-          cancel_url: `${window.location.origin}/pos?stripe=cancel`,
-          customer_name: selectedCustomer?.name ?? "Walk-in",
+          lines: cartLines.map(({ item_id, quantity }) => ({ item_id, quantity })),
+          customer_id: selectedCustomer?.id ?? null,
+          notes: notes || null,
           customer_email: selectedCustomer?.email ?? null,
-          payment_status: paymentStatus,
-          stripe_account: import.meta.env.VITE_STRIPE_CONNECTED_ACCOUNT?.trim() || null,
           idempotency_key: idempotencyKey,
         }),
       });
@@ -631,7 +640,7 @@ export default function PosPage() {
                   <span>Total</span>
                   <strong>{money(checkoutTotal)}</strong>
                 </div>
-                <Button className="w-full" disabled={cartLines.length === 0 || !can("checkout")} onClick={runCheckout}>
+                <Button className="w-full" disabled={cartLines.length === 0 || !can("checkout")} onClick={() => void runCheckout()}>
                   Complete Checkout
                 </Button>
                 <Button
@@ -700,7 +709,7 @@ export default function PosPage() {
                 <Input value={newCustomerEmail} onChange={(e) => setNewCustomerEmail(e.target.value)} placeholder="Email (optional)" />
                 <Input value={newCustomerPhone} onChange={(e) => setNewCustomerPhone(e.target.value)} placeholder="Phone (optional)" />
               </div>
-              <Button onClick={addCustomer}>Add Customer</Button>
+                <Button onClick={() => void addCustomer()}>Add Customer</Button>
 
               <div className="space-y-2 max-h-52 overflow-auto">
                 {customers.map((customer) => (

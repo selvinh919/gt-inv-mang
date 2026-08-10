@@ -2,8 +2,20 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
     {
+      "source": "/api/tcg",
+      "destination": "/api/tcg-gateway"
+    },
+    {
       "source": "/api/auth/:path*",
       "destination": "/api/auth"
+    },
+    {
+      "source": "/api/pos/:path*",
+      "destination": "/api/pos"
+    },
+    {
+      "source": "/api/payments/:path*",
+      "destination": "/api/payments"
     }
   ],
   "headers": [
