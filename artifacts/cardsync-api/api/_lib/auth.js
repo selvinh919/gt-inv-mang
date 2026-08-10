@@ -1,5 +1,5 @@
 import { SignJWT, jwtVerify } from "jose";
-import { createHmac, randomBytes } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 const textEncoder = new TextEncoder();
 
@@ -15,8 +15,6 @@ export function setCors(req, res, methods = "GET,POST,OPTIONS") {
   if (origin && allowList.has(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Vary", "Origin");
-  } else {
-    res.setHeader("Access-Control-Allow-Origin", "*");
   }
 
   res.setHeader("Access-Control-Allow-Methods", methods);
@@ -56,8 +54,9 @@ export function verifyState(state, expectedProvider) {
   const [encoded, signature] = state.split(".");
   if (!encoded || !signature) return null;
 
-  const expected = signData(encoded, getStateSecret());
-  if (signature !== expected) return null;
+  const expected = Buffer.from(signData(encoded, getStateSecret()));
+  const received = Buffer.from(signature);
+  if (received.length !== expected.length || !timingSafeEqual(received, expected)) return null;
 
   const decoded = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
   if (!decoded || decoded.provider !== expectedProvider) return null;

@@ -13,6 +13,7 @@ type ExternalProfile = {
   name: string;
   picture?: string | null;
   provider?: string | null;
+  role?: "OWNER" | "MANAGER" | "CASHIER";
 };
 
 type LocalAuthResponse = {
@@ -27,10 +28,10 @@ type LocalAuthResponse = {
 };
 
 function LocalAuthSection() {
-  const { signInFromExternal, users } = useBusinessStore();
+  const { signInFromExternal } = useBusinessStore();
   const { toast } = useToast();
 
-  const [mode, setMode] = useState<"signin" | "create" | "forgot">("signin");
+  const [mode, setMode] = useState<"signin" | "create">("signin");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -52,11 +53,12 @@ function LocalAuthSection() {
       name: payload.user.name,
       external_sub: `local|${payload.user.id}`,
       adminEmails,
+      role: payload.user.role,
     });
   };
 
   const callLocalAuthEndpoint = async (
-    path: "/local/login" | "/local/register" | "/local/reset",
+    path: "/local/login" | "/local/register",
     body: Record<string, unknown>,
     token?: string,
   ) => {
@@ -76,31 +78,6 @@ function LocalAuthSection() {
     }
 
     return payload;
-  };
-
-  const migrateMatchingLocalUser = async (email: string, passwordValue: string) => {
-    const existing = users.find(
-      (candidate) =>
-        candidate.active &&
-        candidate.email.trim().toLowerCase() === email &&
-        candidate.password === passwordValue,
-    );
-
-    if (!existing) return false;
-
-    try {
-      await callLocalAuthEndpoint("/local/register", {
-        name: existing.name,
-        email,
-        password: passwordValue,
-      });
-      return true;
-    } catch (error) {
-      if (error instanceof Error && /already exists/i.test(error.message)) {
-        return true;
-      }
-      throw error;
-    }
   };
 
   const handleSubmit = () => {
@@ -126,7 +103,7 @@ function LocalAuthSection() {
       return;
     }
 
-    if ((mode === "create" || mode === "forgot") && trimmedPassword !== confirmPassword.trim()) {
+    if (mode === "create" && trimmedPassword !== confirmPassword.trim()) {
       toast({
         title: "Password mismatch",
         description: "Password and confirmation must match.",
@@ -138,29 +115,11 @@ function LocalAuthSection() {
     setIsSubmitting(true);
     try {
       if (mode === "signin") {
-        try {
-          const response = (await callLocalAuthEndpoint("/local/login", {
-            email: trimmedEmail,
-            password: trimmedPassword,
-          })) as LocalAuthResponse;
-          applyRemoteSession(response);
-        } catch (remoteError) {
-          // One-time bridge: if this browser has a local account, migrate it to server auth.
-          const migrated = await migrateMatchingLocalUser(trimmedEmail.toLowerCase(), trimmedPassword);
-          if (migrated) {
-            const response = (await callLocalAuthEndpoint("/local/login", {
-              email: trimmedEmail,
-              password: trimmedPassword,
-            })) as LocalAuthResponse;
-            applyRemoteSession(response);
-            toast({
-              title: "Account migrated",
-              description: "Your local account has been migrated to cloud auth.",
-            });
-          } else {
-            throw remoteError;
-          }
-        }
+        const response = (await callLocalAuthEndpoint("/local/login", {
+          email: trimmedEmail,
+          password: trimmedPassword,
+        })) as LocalAuthResponse;
+        applyRemoteSession(response);
       } else if (mode === "create") {
         const response = (await callLocalAuthEndpoint("/local/register", {
           name: name.trim(),
@@ -168,28 +127,10 @@ function LocalAuthSection() {
           password: trimmedPassword,
         })) as LocalAuthResponse;
         applyRemoteSession(response);
-      } else {
-        const response = (await callLocalAuthEndpoint("/local/reset", {
-          email: trimmedEmail,
-          password: trimmedPassword,
-        })) as LocalAuthResponse;
-        applyRemoteSession(response);
-        toast({
-          title: "Password reset",
-          description: "Your password was updated. You can sign in now.",
-        });
-        setMode("signin");
-        setPassword("");
-        setConfirmPassword("");
       }
     } catch (error) {
       toast({
-        title:
-          mode === "signin"
-            ? "Sign-in failed"
-            : mode === "create"
-              ? "Account creation failed"
-              : "Reset failed",
+        title: mode === "signin" ? "Sign-in failed" : "Account creation failed",
         description: error instanceof Error ? error.message : "Unknown error",
         variant: "destructive",
       });
@@ -206,17 +147,6 @@ function LocalAuthSection() {
       <div className="grid grid-cols-2 gap-2">
         <Button variant={mode === "signin" ? "default" : "outline"} onClick={() => setMode("signin")}>Sign In</Button>
         <Button variant={mode === "create" ? "default" : "outline"} onClick={() => setMode("create")}>Create Account</Button>
-      </div>
-
-      <div>
-        <button
-          type="button"
-          className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
-          onClick={() => setMode("forgot")}
-          disabled={isSubmitting}
-        >
-          Forgot password?
-        </button>
       </div>
 
       {mode === "create" ? (
@@ -239,17 +169,17 @@ function LocalAuthSection() {
       <Input
         value={password}
         onChange={(event) => setPassword(event.target.value)}
-        placeholder={mode === "forgot" ? "New password" : "Password"}
+        placeholder="Password"
         type="password"
         autoComplete={mode === "signin" ? "current-password" : "new-password"}
         disabled={isSubmitting}
       />
 
-      {mode === "create" || mode === "forgot" ? (
+      {mode === "create" ? (
         <Input
           value={confirmPassword}
           onChange={(event) => setConfirmPassword(event.target.value)}
-          placeholder={mode === "forgot" ? "Confirm new password" : "Confirm password"}
+          placeholder="Confirm password"
           type="password"
           autoComplete="new-password"
           disabled={isSubmitting}
@@ -257,12 +187,8 @@ function LocalAuthSection() {
       ) : null}
 
       <Button className="w-full" onClick={handleSubmit} disabled={isSubmitting}>
-        {mode === "signin" ? "Sign In" : mode === "create" ? "Create Account" : "Reset Password"}
+        {mode === "signin" ? "Sign In" : "Create Account"}
       </Button>
-
-      {mode === "forgot" ? (
-        <p className="text-xs text-muted-foreground">Enter your account email and set a new password.</p>
-      ) : null}
     </div>
   );
 }
@@ -323,6 +249,7 @@ function SocialAuthSection() {
           name: profile.name || profile.email,
           external_sub: profile.sub,
           adminEmails,
+          role: profile.role === "OWNER" ? "owner" : profile.role === "MANAGER" ? "manager" : "clerk",
         });
       } catch (error) {
         clearStoredAuthToken();
